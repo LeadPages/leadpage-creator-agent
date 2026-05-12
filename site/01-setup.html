@@ -90,15 +90,16 @@
         Paste it somewhere safe right away.</p>
       </div>
 
-      <h2>3. Set up the project</h2>
+      <h2>3. Clone the project</h2>
 
       <p>
-        The TypeScript code you'll build alongside this tutorial lives in
-        <code>example-agent/</code> next to the site you're reading right
-        now. From a terminal:
+        The TypeScript code you'll build alongside this tutorial lives at
+        <a href="https://github.com/LeadPages/leadpage-creator-agent">github.com/LeadPages/leadpage-creator-agent</a>.
+        From a terminal:
       </p>
 
-      <pre><code class="lang-bash">cd example-agent
+      <pre><code class="lang-bash">git clone https://github.com/LeadPages/leadpage-creator-agent.git
+cd leadpage-creator-agent/example-agent
 
 # Install dependencies (one Anthropic SDK, one types package).
 bun install
@@ -116,8 +117,9 @@ DEFAULT_MODEL=claude-sonnet-4-6</code></pre>
 
       <p>
         Let's confirm the SDK, the key, and the network all work. Create a
-        file called <code>smoke.ts</code> in <code>example-agent/</code> with
-        this content:
+        file called <code>smoke.ts</code> inside the
+        <code>example-agent/</code> directory you just cloned, with this
+        content:
       </p>
 
       <pre data-file="smoke.ts"><code class="lang-ts">import Anthropic from "@anthropic-ai/sdk";
@@ -180,9 +182,9 @@ console.log(response.content);</code></pre>
       <h2>What you have now</h2>
 
       <p>
-        A working <code>example-agent/</code> directory, a real API key wired
-        in, and a runtime that can call Claude. That's everything the rest
-        of the tutorial needs.
+        A cloned <code>leadpage-creator-agent/example-agent/</code> directory,
+        a real API key wired in, and a runtime that can call Claude. That's
+        everything the rest of the tutorial needs.
       </p>
 
       <p>
@@ -190,7 +192,7 @@ console.log(response.content);</code></pre>
         recognize the names from the chapter list:
       </p>
 
-      <pre><code class="lang-bash">tree -L 2 example-agent
+      <pre><code class="lang-bash">tree -L 2 leadpage-creator-agent/example-agent
 example-agent
 ├── README.md
 ├── package.json
