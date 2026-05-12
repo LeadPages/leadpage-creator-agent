@@ -158,7 +158,12 @@ section.chapter + section.chapter { margin-top: 40px; padding-top: 40px; border-
 .sidebar .toc li a { scroll-margin-top: 12px; }
 """
     styles = minify_css(raw_styles + extra_styles)
-    base_js = minify_js(raw_js)
+    # NOTE: do NOT minify the JS — the homegrown minifier doesn't understand
+    # regex literals (which contain quote characters), and ends up leaking
+    # "in-a-string" state into the rest of the file, eating real comments
+    # and silently dropping function declarations. The file is ~6 KB; the
+    # savings aren't worth the bug surface.
+    base_js = raw_js
 
     # Single-page JS tweaks: replace the body-slug lookup in the quiz with a
     # nearest-ancestor lookup, and add an IntersectionObserver for active link.
