@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>04 · Skills — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch04">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 04</span><span class="sep">·</span><span>~25 min</span><span class="sep">·</span><span>workshop: agent-decomposition</span>
+      </div>
+      <h1>Skills</h1>
+      <p class="lead">
+        Some instructions are too big for the system prompt and too rule-shaped
+        to be a tool. A <strong>skill</strong> is a markdown file the agent
+        loads when it decides it needs it — paying for the tokens only on the
+        turns where they're useful.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Move the copywriting rules and the hero-layout patterns out of the
+        system prompt and into two skill files. Add a <code>load_skill</code>
+        tool. Watch the agent decide which skills to load. End with a
+        smaller system prompt and better, more consistent output.</p>
+      </div>
+
+      <h2>The shape of a skill</h2>
+
+      <p>
+        A skill is a plain markdown file with a tiny YAML frontmatter — a
+        <code>name</code> and a one-line <code>description</code> the model
+        reads when deciding whether to load this skill. The body is whatever
+        instructions the skill encodes.
+      </p>
+
+      <pre data-file="src/skills/conversion-copy.md"><code class="lang-markdown">---
+name: conversion-copy
+description: Rules for writing landing-page copy that converts — headline shape,
+  subhead pattern, value prop structure, CTA voice. Load when generating page copy.
+---
+
+# Conversion copywriting rules
+
+These are the rules the copywriter follows. They're opinionated on purpose.
+
+## Headline (`<h1>`)
+- Lead with the outcome, not the product.
+- One promise. Two promises convert on neither.
+- 6–12 words.
+- Avoid: "Unlock", "Revolutionize", "Empower", "AI-powered".
+
+## CTA
+- Verb + specific outcome. "Try a box" beats "Get Started".
+- 2-4 words.
+- One primary CTA on the page.
+
+[... full file in src/skills/conversion-copy.md ...]</code></pre>
+
+      <p>
+        The second skill, <code>hero-patterns.md</code>, encodes which hero
+        layout to use when. (Same shape, different content — go look at
+        <code>src/skills/hero-patterns.md</code>.)
+      </p>
+
+      <h2>The load_skill tool</h2>
+
+      <p>
+        We add one new tool. Its <em>description</em> lists every available
+        skill — that's how the model knows which ones exist. The skill
+        bodies themselves never get sent until the agent asks for them.
+      </p>
+
+      <pre data-file="src/04-skills.ts"><code class="lang-ts">{
+  name: "load_skill",
+  description:
+    "Load the body of a skill into context. Use this when you decide a skill is " +
+    "relevant to the current task. Available skills:\n" +
+    SKILLS.map(s => `  - ${s.name}: ${s.description}`).join("\n"),
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", enum: SKILLS.map(s => s.name) },
+    },
+    required: ["name"],
+  },
+}</code></pre>
+
+      <p>
+        Two design choices worth noticing here:
+      </p>
+
+      <ul>
+        <li>The skill <em>list</em> is in the tool description. The skill <em>bodies</em> are loaded on demand. Big payoff: a skill can be 800 lines without costing 800 lines on every request.</li>
+        <li>The input schema uses <code>enum</code>. The model literally cannot ask for a skill that doesn't exist. (Without the enum, you'd have to handle "skill not found" — fine, just more code.)</li>
+      </ul>
+
+      <h2>The shrunken system prompt</h2>
+
+      <p>
+        Look at what's left in the prompt. It used to spell out the page
+        structure, the typography rules, the CTA style, and the headline
+        format. Now it just tells the agent <em>where the rules live</em>:
+      </p>
+
+      <pre data-file="src/04-skills.ts"><code class="lang-ts">const SYSTEM = `
+You design and write landing pages.
+
+You have two tools:
+- load_skill(name): pulls a chunk of instructions into context. Skills you
+  can load are listed in the tool description. Load them when relevant —
+  don't load everything up front.
+- save_page(filename, html): writes the final document and stops the loop.
+
+For every brief, follow this routine:
+1. Decide which skills are relevant to this brief.
+2. Load them with load_skill (call once per skill, before generating).
+3. Generate the complete HTML.
+4. Call save_page exactly once with the final document.
+`.trim();</code></pre>
+
+      <p>
+        Ten lines. The agent gets the actual style rules only when it needs
+        them, and the rules can grow arbitrarily without making every request
+        slower or more expensive.
+      </p>
+
+      <div class="try-it">
+        <h4>Try it</h4>
+        <pre><code class="lang-bash">bun run skills "vegan meal kits for busy parents"</code></pre>
+        <p>The terminal will show which skills the agent decided to load:</p>
+        <div class="expected">  turn 1 → load_skill(conversion-copy)
+  turn 2 → load_skill(hero-patterns)
+  turn 3 → save_page
+
+turns: 3, skills loaded: conversion-copy, hero-patterns
+✓ saved to /…/out/vegan-meal-kits.html</div>
+        <p style="margin-top:10px;">
+          Run it again with a topic where one skill clearly shouldn't matter:
+        </p>
+        <pre><code class="lang-bash">bun run skills "a flat HTML coming-soon page, just a logo and an email field"</code></pre>
+        <p>You'll probably see the agent skip <code>hero-patterns</code> —
+        because the page doesn't have a hero. That's the agent <em>using</em>
+        the description text to decide.</p>
+      </div>
+
+      <h2>When to use a skill vs a tool vs a longer system prompt</h2>
+
+      <table>
+        <thead><tr><th>If it's…</th><th>Use a…</th><th>Because…</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Always relevant, fits in &lt;30 lines</td>
+            <td>System prompt</td>
+            <td>Cheap, present every turn, no cognitive overhead for the model.</td>
+          </tr>
+          <tr>
+            <td>Big body of rules / patterns / examples</td>
+            <td>Skill</td>
+            <td>Loaded only when relevant. Can be hundreds of lines without costing tokens on unrelated requests.</td>
+          </tr>
+          <tr>
+            <td>External data lookup or side effect</td>
+            <td>Tool</td>
+            <td>The model can't know it / can't do it. Code in your repo handles it.</td>
+          </tr>
+          <tr>
+            <td>A sub-task with its own context and goal</td>
+            <td>Subagent (Ch 05)</td>
+            <td>Separating contexts keeps each one focused. A subagent's failure mode is local.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout tip">
+        <strong>The decomposition workshop's heuristic, in one line</strong>
+        <p>"If you find yourself writing 'always do X before Y' in the system
+        prompt — that's a skill. If the agent never reads it for a given
+        request, the prompt got too big. Move the rule into a skill, leave a
+        line in the system prompt that says when to load it."</p>
+      </div>
+
+      <h2>Why skills beat one big prompt — measured</h2>
+
+      <p>
+        When we put this through the eval set in Chapter 07, the
+        skills-version of the agent will get higher conversion-quality
+        scores than the monolith-prompt version on the briefs that needed
+        the rules, and indistinguishable scores on the briefs that didn't —
+        but at a lower average input token count. The pattern shows up in
+        the StockPilot workshop too: their decomposition shrinks a 402-line
+        prompt to 15 lines, and the agent's score goes from 71% to 92%.
+        The knowledge didn't shrink (400 lines of skills replaced 400 lines
+        of prompt). The difference is <em>when</em> they're in context.
+      </p>
+
+      <h2>What we built · what's still off · what's next</h2>
+
+      <div class="fact-row">
+        <div class="fact"><div class="k">System prompt</div><div class="v">~10<span class="unit">lines</span></div></div>
+        <div class="fact"><div class="k">Skills</div><div class="v">2</div></div>
+        <div class="fact"><div class="k">Tokens per request</div><div class="v">↓</div></div>
+        <div class="fact"><div class="k">Output consistency</div><div class="v">↑↑</div></div>
+      </div>
+
+      <p>
+        Watch the agent's <code>tool_use</code> sequence again. It loads two
+        skills, then makes the entire page in one shot. That's a single
+        agent doing two jobs (copy and design) at the same time, and you
+        can <em>see</em> it: the page is pretty good but the headline and
+        the layout sometimes fight each other — different optimization
+        targets, one decision-maker.
+      </p>
+
+      <p>
+        Chapter 05 splits the work. An orchestrator gets the brief, asks a
+        copywriter subagent for the words, then asks a designer subagent for
+        the visuals, then puts them together. Each one has its own context,
+        focused on one job.
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">Why is it better to put <code>conversion-copy.md</code> in a skill, instead of just <em>pasting its contents into the system prompt</em>?</div>
+        <div class="options">
+          <button class="opt" data-right="false">System prompts have a hard 4,000-character cap.</button>
+          <button class="opt" data-right="true">You only pay the tokens on turns where the rules are actually relevant. A page generator that occasionally just makes a "coming soon" splash doesn't need to read the conversion-copy rules — but in the system prompt, it would re-read them every single request.</button>
+          <button class="opt" data-right="false">Skills get higher priority than system prompts.</button>
+          <button class="opt" data-right="false">Tool calls are faster than system prompts.</button>
+        </div>
+        <div class="explain">
+          The system prompt is sent on <em>every</em> turn. Skills load on
+          demand. For a 600-line copywriting reference, that's the difference
+          between paying for 600 lines on every request and paying for them
+          only on the ~70% of requests where the agent decides they apply.
+          The token savings matter, but the deeper effect is on the model's
+          focus: the system prompt is what the model uses to decide what kind
+          of request this <em>is</em>, and a 600-line prompt drowns out the
+          1-line user message.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./03-tools.html"><span class="nav-label">← Previous</span><span class="nav-title">03 Tools</span></a>
+        <a href="./05-decomposition.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">05 Decomposition</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

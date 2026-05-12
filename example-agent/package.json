@@ -1,0 +1,27 @@
+{
+  "name": "leadpage-creator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The tutorial's running example: an agent that creates landing pages",
+  "scripts": {
+    "first-call":   "bun run src/02-first-call.ts",
+    "tools":        "bun run src/03-tools.ts",
+    "skills":       "bun run src/04-skills.ts",
+    "decompose":    "bun run src/05-decomposition.ts",
+    "memory":       "bun run src/06-memory.ts",
+    "eval":         "bun run evals/run.ts",
+    "eval:baseline":"bun run evals/run.ts --baseline",
+    "sweep":        "bun run src/08-rightmodel.ts",
+    "stream":       "bun run src/09-production.ts",
+    "deploy":       "bun run src/10-managed-agent.ts",
+    "typecheck":    "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0"
+  }
+}

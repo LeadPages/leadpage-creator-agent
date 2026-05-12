@@ -1,0 +1,41 @@
+{
+  "tasks": [
+    {
+      "id": "T1-veg-meals",
+      "brief": "vegan meal kits for busy parents",
+      "must_mention": ["plant", "meal", "fast"],
+      "primary_goal": "trial signup"
+    },
+    {
+      "id": "T2-saas-accountants",
+      "brief": "a SaaS dashboard for solo accountants — feels like Stripe's design",
+      "must_mention": ["dashboard", "accountant"],
+      "primary_goal": "book demo"
+    },
+    {
+      "id": "T3-marathon",
+      "brief": "a 4-week marathon training program for runners who've already done a half",
+      "must_mention": ["marathon", "weeks", "training"],
+      "primary_goal": "enrollment"
+    },
+    {
+      "id": "T4-indie-game",
+      "brief": "an indie cozy farming game launching on Steam",
+      "must_mention": ["game", "Steam"],
+      "primary_goal": "wishlist"
+    },
+    {
+      "id": "T5-coming-soon",
+      "brief": "a flat coming-soon splash, just a logo and an email field, for a B2B SaaS in stealth",
+      "must_mention": ["coming", "email"],
+      "primary_goal": "email signup",
+      "constraints": ["short", "no hero patterns needed"]
+    },
+    {
+      "id": "T6-pricing-plain",
+      "brief": "a single pricing page for a consulting firm — three tiers, no marketing fluff",
+      "must_mention": ["pricing", "tier"],
+      "primary_goal": "book intro call"
+    }
+  ]
+}

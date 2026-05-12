@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>06 · Memory — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch06">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 06</span><span class="sep">·</span><span>~25 min</span><span class="sep">·</span><span>workshop: agents-that-remember</span>
+      </div>
+      <h1>Memory</h1>
+      <p class="lead">
+        Right now, every run starts from zero. The agent doesn't know what
+        the user told it five minutes ago. We give it a brand-kit memory
+        store so it can carry facts across sessions — the SDK-only version
+        here, and a peek at how Claude Managed Agents formalize the same
+        shape.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Add two tools — <code>remember</code> and <code>recall_all</code>
+        — backed by a JSON file. Show the "goldfish baseline" (no memory),
+        then turn it on and see the agent reference earlier facts. Map
+        what we built onto the managed-agents <em>memory_store</em>
+        concept.</p>
+      </div>
+
+      <h2>The goldfish baseline</h2>
+
+      <p>
+        Sessions are isolated by design — every API call sends the entire
+        conversation in <code>messages</code>. If you start a new session,
+        the agent has zero memory of any previous one. That's what the
+        agents-that-remember workshop calls the "goldfish": cute, but
+        useless for anything that has to know your brand by Tuesday.
+      </p>
+
+      <div class="diagram">
+        <pre>session A: "I'm building for FreshLeaf — green & cream, warm voice"
+session A: agent makes a page. Knows everything.
+                  ↓
+              [session ends]
+                  ↓
+session B: "make me another page for FreshLeaf"
+session B: agent: "What's FreshLeaf? What palette? What voice?"</pre>
+      </div>
+
+      <h2>The shape of the fix</h2>
+
+      <p>
+        Give the agent a <em>store</em> — a place outside the session — that
+        it can write to and read from. Mount that same store into every
+        session, and the agent has continuity. The simplest possible store
+        is a JSON file on disk:
+      </p>
+
+      <pre data-file=".memory/brand-kit.json"><code class="lang-json">{
+  "brand_name": "FreshLeaf",
+  "palette": ["#2f7a4a", "#f6f0e4", "#1d1b18"],
+  "voice": "warm, specific, parent-friendly",
+  "audience": "busy parents"
+}</code></pre>
+
+      <p>
+        The agent gets two tools. <code>recall_all</code> reads the file.
+        <code>remember(key, value)</code> writes one entry. The system
+        prompt tells the agent to call <code>recall_all</code> first on
+        every session, and to call <code>remember</code> whenever the user
+        mentions a fact.
+      </p>
+
+      <pre data-file="src/06-memory.ts"><code class="lang-ts">const TOOLS = [
+  {
+    name: "remember",
+    description: "Save a fact about the user's brand to persistent memory.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key:   { type: "string", description: "A short slug like 'palette' or 'voice'." },
+        value: { description: "Any JSON-serializable value." },
+      },
+      required: ["key", "value"],
+    },
+  },
+  {
+    name: "recall_all",
+    description: "Return everything currently in the brand-kit store.",
+    input_schema: { type: "object", properties: {} },
+  },
+];</code></pre>
+
+      <div class="try-it">
+        <h4>Try it — three sessions, one brand</h4>
+        <pre><code class="lang-bash">rm -rf .memory   # start fresh
+
+bun run memory "I'm building a page for FreshLeaf — vegan meal kits.
+                Use green and cream, warm parent-friendly voice."
+
+bun run memory "Make me another page for the FreshLeaf holiday gift box."
+
+bun run memory "Show me what you know about FreshLeaf."</code></pre>
+        <p>Watch the tool calls:</p>
+        <div class="expected">▸ "I'm building a page for FreshLeaf..."
+  → recall_all({})
+  → remember({"key":"brand_name","value":"FreshLeaf"})
+  → remember({"key":"palette","value":["#2f7a4a", "#f6f0e4"]})
+  → remember({"key":"voice","value":"warm, specific, parent-friendly"})
+
+▸ "Make me another page for the FreshLeaf holiday gift box."
+  → recall_all({})
+  (agent now sees brand_name, palette, voice — uses them)
+
+▸ "Show me what you know about FreshLeaf."
+  → recall_all({})
+
+I know that FreshLeaf is a vegan meal kit brand. Its palette is
+green (#2f7a4a) and cream (#f6f0e4) with charcoal accents…</div>
+        <p style="margin-top:10px;">Look at <code>.memory/brand-kit.json</code>
+        between runs to see what the agent decided to save.</p>
+      </div>
+
+      <h2>What's a good thing to remember?</h2>
+
+      <p>
+        Memory is small. Keep it as facts, not transcripts. Good keys:
+      </p>
+
+      <ul>
+        <li><strong>Facts you keep being asked the same question about</strong> — palette, voice, audience, primary CTA verb.</li>
+        <li><strong>User preferences</strong> — "always avoid stock photography", "no Comic Sans".</li>
+        <li><strong>Constraints discovered the hard way</strong> — "the legal team requires a privacy link in the footer".</li>
+      </ul>
+
+      <p>Bad things to store:</p>
+
+      <ul>
+        <li><strong>Whole conversation transcripts.</strong> Memory isn't a log. Logs go somewhere else.</li>
+        <li><strong>Anything time-sensitive without a timestamp.</strong> "We're running a promo this week" rots into nonsense by next month.</li>
+        <li><strong>Anything you'd be unhappy seeing leaked.</strong> Treat the memory store as private but not secret — it lives outside the model's training data and is visible to anyone with API access.</li>
+      </ul>
+
+      <h2>Mapping to Claude Managed Agents</h2>
+
+      <p>
+        On the managed-agents platform, the same idea has a first-class
+        primitive: a <strong>memory store</strong> — a persistent file-system
+        that the agent reads from and writes to across sessions. You create
+        it once and attach it to each new session as a "resource":
+      </p>
+
+      <pre><code class="lang-bash">ant beta:memory-stores create \
+  --name "brand-kit" \
+  --description "FreshLeaf brand kit"
+
+ant beta:sessions create \
+  --agent "$AGENT" --environment-id "$ENV" \
+  --resource '{
+    "type": "memory_store",
+    "memory_store_id": "mem_...",
+    "prompt": "Track the user'\''s brand kit.",
+    "access": "read_write"
+  }'</code></pre>
+
+      <p>
+        The <code>prompt</code> field gets injected into the agent's system
+        prompt — it tells the agent <em>how</em> to use this store. That's
+        the lever you tune, exactly like we tuned ours with the "always
+        recall_all first" sentence above.
+      </p>
+
+      <h2>Dreaming — the consolidation step</h2>
+
+      <p>
+        The agents-that-remember workshop has a second concept:
+        <strong>Dreaming</strong>. The idea is: after a few sessions, the
+        live memory store gets messy. Maybe the agent stored the same fact
+        three different ways, or wrote prose where it should have written a
+        key. Dreaming is a batch job that reads the live store plus the
+        transcripts and writes a <em>new</em>, distilled store. You then
+        swap the new store in for future sessions.
+      </p>
+
+      <pre><code class="lang-bash">ant beta:dreams create \
+  --model claude-opus-4-7 \
+  --input "{\"type\":\"memory_store\",\"memory_store_id\":\"$MEM\"}" \
+  --input "{\"type\":\"sessions\",\"session_ids\":[\"$SESS1\",\"$SESS2\"]}" \
+  --instructions "I am building landing pages for FreshLeaf — keep the
+                  facts that affect generated pages; drop conversational fluff."</code></pre>
+
+      <p>
+        For the SDK-only version of our Leadpage Creator, you'd replicate
+        this with a periodic offline script: read <code>.memory/*.json</code>,
+        read any saved conversation logs, run a model over them with the
+        same kind of instructions, write a cleaned-up file. Conceptually
+        identical to managed Dreaming, just with you running the cron.
+      </p>
+
+      <div class="callout tip">
+        <strong>When to reach for which</strong>
+        <p><strong>Memory store</strong> when the agent needs continuity
+        right now. <strong>Dreaming</strong> when the store has gotten
+        messy enough that the agent's recall is suffering — or when you
+        want to absorb a backlog of transcripts into a structured form.</p>
+      </div>
+
+      <h2>What we built · what's left · what's next</h2>
+
+      <div class="fact-row">
+        <div class="fact"><div class="k">Cross-session memory</div><div class="v">✓</div></div>
+        <div class="fact"><div class="k">User-readable</div><div class="v">✓<span class="unit"> — JSON file</span></div></div>
+        <div class="fact"><div class="k">Measured?</div><div class="v">no<span class="unit"> — next ch.</span></div></div>
+      </div>
+
+      <p>
+        The agent is starting to look real: it has tools, skills, subagents,
+        and now memory. But we have nothing to tell us whether all this
+        complexity is actually making it <em>better</em>. Chapter 07 fixes
+        that — we build a test set, a grader, and a baseline. From here on,
+        every change comes with a number.
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">You're considering storing every user message and every page the agent produces in the memory store, "so the agent has full history". Which line in this chapter is the strongest argument against doing that?</div>
+        <div class="options">
+          <button class="opt" data-right="false">"Memory is small."</button>
+          <button class="opt" data-right="true">"Memory isn't a log. Logs go somewhere else."</button>
+          <button class="opt" data-right="false">"The same idea has a first-class primitive."</button>
+          <button class="opt" data-right="false">"It lives outside the model's training data."</button>
+        </div>
+        <div class="explain">
+          The memory store sits in every session's context — its job is to
+          be the agent's working knowledge, not its history. If you stuff
+          transcripts into it, every future session pays input tokens to
+          re-read them, and the agent has to scan past noise to find facts.
+          For "what happened last Tuesday," reach for a database or an
+          audit log; for "what's the user's palette," reach for the memory
+          store. (The Dreaming workshop is essentially built on this
+          observation: the periodic batch turns the noisy log-like things
+          into clean fact-shaped things.)
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./05-decomposition.html"><span class="nav-label">← Previous</span><span class="nav-title">05 Decomposition</span></a>
+        <a href="./07-evals.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">07 Evals</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

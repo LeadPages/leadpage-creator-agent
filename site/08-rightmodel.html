@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>08 · Right model — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch08">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 08</span><span class="sep">·</span><span>~20 min</span><span class="sep">·</span><span>workshop: rightmodel</span>
+      </div>
+      <h1>Right model</h1>
+      <p class="lead">
+        Sonnet has been doing every job. Some of those jobs don't need Sonnet.
+        We sweep Haiku × Sonnet × Opus per subagent, measure pass rate, cost,
+        and latency, and end with a different model in each slot.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Use the eval set from Chapter 07 as a benchmark. Run each subagent
+        at each model tier. Build a quality-per-dollar table. Pick the
+        cheapest model that doesn't regress quality.</p>
+      </div>
+
+      <h2>The three knobs</h2>
+
+      <p>The Claude model lineup, today:</p>
+
+      <table>
+        <thead><tr><th>Model</th><th>Strengths</th><th>Roughly</th></tr></thead>
+        <tbody>
+          <tr><td><code>claude-haiku-4-5-20251001</code></td><td>Fast, cheap. Good at well-defined tasks with clear instructions.</td><td>$1 in · $5 out / 1M tokens</td></tr>
+          <tr><td><code>claude-sonnet-4-6</code></td><td>The default. Balanced. Handles ambiguity, light reasoning, most tool use.</td><td>$3 in · $15 out / 1M tokens</td></tr>
+          <tr><td><code>claude-opus-4-7</code></td><td>The most capable. Worth the cost when the task is genuinely hard or the stakes are high.</td><td>$15 in · $75 out / 1M tokens</td></tr>
+        </tbody>
+      </table>
+
+      <p>
+        (Opus 4.7 with 1M-token context is what's powering Claude Code right
+        now. For agents that don't need to think across a huge codebase,
+        Sonnet is usually fine and 5× cheaper.)
+      </p>
+
+      <h2>The sweep design</h2>
+
+      <p>
+        Our decomposed agent has three subagents (copywriter, designer,
+        assembler). The naïve grid would be 3 models × 3 subagents = 27
+        cells, each running 6 tasks. Expensive.
+      </p>
+
+      <p>
+        Instead we do <strong>one subagent at a time</strong>: pin the
+        others at Sonnet, vary one across {Haiku, Sonnet, Opus}, measure.
+        That's 3 cells × 3 subagents = 9 cells. Each cell runs the 6-task
+        eval. Total cost: about $1 the first time.
+      </p>
+
+      <pre data-file="src/08-rightmodel.ts"><code class="lang-ts">// One subagent varies, others pinned to Sonnet baseline.
+const baseline: Subagents = {
+  copywriter: "claude-sonnet-4-6",
+  designer:   "claude-sonnet-4-6",
+  assembler:  "claude-sonnet-4-6",
+};
+
+for (const sub of ["copywriter", "designer", "assembler"]) {
+  for (const model of MODELS) {
+    const models = { ...baseline, [sub]: model };
+    // run the agent on each eval task, grade, record pass_rate / cost / latency
+  }
+}</code></pre>
+
+      <div class="try-it">
+        <h4>Try it (estimate: ~$1 in API spend, ~10 min)</h4>
+        <pre><code class="lang-bash">bun run sweep</code></pre>
+        <p>Or just compare two subagents quickly:</p>
+        <pre><code class="lang-bash">bun run sweep --pin assembler=claude-sonnet-4-6 --tasks T1,T2,T3</code></pre>
+        <p>You'll see a per-cell table, then a recommendation. Real numbers
+        vary, but a representative result:</p>
+        <div class="expected">┌─────────────┬──────────┬──────────┬──────────┬──────────┐
+│ subagent    │ model    │ pass     │ cost     │ latency  │
+├─────────────┼──────────┼──────────┼──────────┼──────────┤
+│ copywriter  │ haiku    │ 83%      │ $0.012   │   23s    │
+│ copywriter  │ sonnet   │ 83%      │ $0.038   │   28s    │
+│ copywriter  │ opus     │ 83%      │ $0.198   │   46s    │
+│ designer    │ haiku    │ 67%      │ $0.011   │   18s    │
+│ designer    │ sonnet   │ 83%      │ $0.034   │   24s    │
+│ designer    │ opus     │ 83%      │ $0.171   │   42s    │
+│ assembler   │ haiku    │ 50%      │ $0.029   │   31s    │
+│ assembler   │ sonnet   │ 83%      │ $0.094   │   38s    │
+│ assembler   │ opus     │ 83%      │ $0.461   │   78s    │
+└─────────────┴──────────┴──────────┴──────────┴──────────┘
+
+Recommendation (cheapest model within 5% of best pass rate):
+  copywriter: claude-haiku-4-5-20251001
+  designer:   claude-sonnet-4-6
+  assembler:  claude-sonnet-4-6</div>
+      </div>
+
+      <h2>Reading the table</h2>
+
+      <p>
+        Three patterns are usually visible:
+      </p>
+
+      <ul>
+        <li><strong>Copywriter: Haiku is fine.</strong> Writing 4 short JSON fields with strict rules is not hard. Sonnet doesn't help; Opus is a waste.</li>
+        <li><strong>Designer: Sonnet is the floor.</strong> Haiku gets confused on at least one task (often T2 — the Stripe-style brief requires connecting "design feel" → palette). Sonnet handles it. Opus doesn't help further.</li>
+        <li><strong>Assembler: Sonnet wins.</strong> Producing 200 lines of valid, internally-consistent HTML with inline CSS is the hardest single job in this agent. Haiku will sometimes miss the CTA, get the typography wrong, or skip a closing tag.</li>
+      </ul>
+
+      <p>
+        Adopt the recommendation and you cut your average request cost from
+        ~$0.05 to ~$0.018 — about 65% off — with no measurable quality loss.
+      </p>
+
+      <div class="callout tip">
+        <strong>The 5% rule</strong>
+        <p>"Cheapest model within 5% of the best pass rate" is a defensible
+        default. Lower than that risks variance: a 100-trial eval at the
+        cheaper tier might actually be 6% behind, not 5%. Higher than that
+        and you start paying for headroom that doesn't ship.</p>
+      </div>
+
+      <h2>What about thinking and effort?</h2>
+
+      <p>
+        The rightmodel workshop sweeps two more axes besides model:
+        <em>extended thinking</em> (let the model generate a long internal
+        reasoning trace before answering) and <em>effort level</em> (how
+        hard the model should try). These can flip a Haiku-fails-this-task
+        cell into a Haiku-passes cell — at the cost of more tokens.
+      </p>
+
+      <p>
+        For the Leadpage Creator, the gain from extended thinking is small —
+        the tasks are short enough that the model doesn't need a long
+        scratchpad. But for an agent doing harder reasoning (the StockPilot
+        F2 task in the workshop, where the agent decides about under-stocking
+        a promo), thinking is decisive. The point: <strong>sweep what
+        matters for your workload.</strong> Model is the first axis to try;
+        thinking/effort is the second.
+      </p>
+
+      <h2>The audit step — before you trust the sweep</h2>
+
+      <p>
+        Phase 1 of the rightmodel workshop is an <em>audit</em> of the eval
+        suite. Sweep results are only as good as the eval underneath them.
+        Things that quietly invalidate a sweep:
+      </p>
+
+      <ul>
+        <li><strong>Task ordering effects.</strong> If the agent's behavior changes based on what it ran last, you're measuring noise.</li>
+        <li><strong>Tiny dataset.</strong> 6 tasks is a tutorial dataset, not a benchmark. For real decisions, 30+.</li>
+        <li><strong>Single trial.</strong> One run per cell hides variance. Aim for 3 trials per cell minimum.</li>
+        <li><strong>Same-family judge.</strong> If both the agent and the LLM judge are Sonnet, Sonnet outputs will tend to score higher. Mitigations: swap judges, or have judge variance go into the report.</li>
+        <li><strong>Pass thresholds with no calibration.</strong> A 3.5/5 cutoff might be too easy or too hard. Look at the distribution of judge scores before trusting "pass rate".</li>
+      </ul>
+
+      <h2>What we built · what's next</h2>
+
+      <div class="fact-row">
+        <div class="fact"><div class="k">Subagents tuned</div><div class="v">3</div></div>
+        <div class="fact"><div class="k">Avg cost / request</div><div class="v">↓65%</div></div>
+        <div class="fact"><div class="k">Pass rate</div><div class="v">=</div></div>
+      </div>
+
+      <p>
+        You now have an agent that's been decomposed, written with skills,
+        had its memory wired up, been measured, and had each part tuned to
+        the right model. The remaining gap to "production" is operational:
+        streaming, error handling, observability, calling out to real
+        external systems. Chapter 09.
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">The sweep table shows your <code>copywriter</code> getting 83% on Haiku, 83% on Sonnet, and 83% on Opus. You decide to use Haiku. Six months later the eval set has grown to 60 tasks and Haiku now scores 78% while Sonnet scores 88%. Which thing should you NOT do?</div>
+        <div class="options">
+          <button class="opt" data-right="false">Re-run the sweep on the new dataset and trust the new winner.</button>
+          <button class="opt" data-right="false">Look at the per-task failures Haiku has on the new tasks — is the model genuinely worse, or did one new task type break it?</button>
+          <button class="opt" data-right="true">Add a system-prompt instruction to "be more thorough" to the Haiku copywriter to try to claw back the 10-point gap before re-running the sweep.</button>
+          <button class="opt" data-right="false">Ship the change to Sonnet — the spec moved, so the recommendation should move with it.</button>
+        </div>
+        <div class="explain">
+          Tweaking the prompt of the model that lost in order to make it
+          look better is exactly the bias the rightmodel audit warns about:
+          you've started fitting the eval rather than measuring against it.
+          If the bigger model actually wins, ship the bigger model. If the
+          smaller model is losing on specific tasks, fix the smaller
+          model's prompt, then re-run the sweep — not the other way around.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./07-evals.html"><span class="nav-label">← Previous</span><span class="nav-title">07 Evals</span></a>
+        <a href="./09-production.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">09 Production</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>03 · Tools — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch03">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 03</span><span class="sep">·</span><span>~25 min</span><span class="sep">·</span><span>tool use, the agent loop</span>
+      </div>
+      <h1>Tools</h1>
+      <p class="lead">
+        We hand Claude two functions — <code>fetch_brand_colors</code> and
+        <code>save_page</code> — and write the loop that lets it actually call
+        them. This is the moment the program goes from "LLM call" to "agent."
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Implement an agent loop with two real tools. By the end you'll
+        understand <code>stop_reason: "tool_use"</code>, the shape of a
+        <code>tool_result</code>, and the rule of thumb for what should be a
+        tool vs what shouldn't.</p>
+      </div>
+
+      <h2>The loop, in pictures</h2>
+
+      <div class="diagram">
+        <pre>┌────────────┐   user.message + tools=[…]
+│   You      │ ─────────────────────────────▶ ┌──────────┐
+│            │                                │  Claude  │
+│            │ ◀──────── tool_use ─────────── │          │
+│            │   "call fetch_brand_colors(    └──────────┘
+│            │    domain='stripe.com')"
+│            │
+│  runs tool │
+│  → palette │
+│            │
+│            │   tool_result for that id ───▶ ┌──────────┐
+│            │                                │  Claude  │
+│            │ ◀───── tool_use (save_page) ── │          │
+│            │   "call save_page(             └──────────┘
+│            │    filename=…, html=…)"
+│            │
+│  runs tool │
+│  → /path/  │
+│            │
+│            │   tool_result ───────────────▶ ┌──────────┐
+│            │                                │  Claude  │
+│            │ ◀──── text + end_turn ──────── │          │
+└────────────┘   "Done! Saved to /path"       └──────────┘</pre>
+      </div>
+
+      <p>
+        Three turns. Six events. Two tools called. The agent's reasoning is
+        invisible — all you see is what it asks for and what you give back.
+        Your job as a developer is to (a) describe the tools accurately and
+        (b) execute the calls faithfully. Claude does the rest.
+      </p>
+
+      <h2>Step 1: describe the tools</h2>
+
+      <p>
+        Tools are JSON-Schema descriptions of functions. Claude reads these
+        descriptions and decides when (and how) to call them. The description
+        text matters as much as the schema — it's how the model knows what
+        the tool is <em>for</em>.
+      </p>
+
+      <pre data-file="src/03-tools.ts"><code class="lang-ts">const TOOLS: Anthropic.Messages.Tool[] = [
+  {
+    name: "fetch_brand_colors",
+    description:
+      "Look up a brand's color palette by domain. Returns up to 5 hex colors, " +
+      "primary first. Use only if the user mentions an existing brand.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: 'The brand\'s domain, e.g. "stripe.com"' },
+      },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "save_page",
+    description:
+      "Write the final landing page HTML to disk and return its absolute path. " +
+      "Call once at the end with the complete document.",
+    input_schema: {
+      type: "object",
+      properties: {
+        filename: { type: "string", description: 'A short filename like "vegan-meal-kits.html"' },
+        html:     { type: "string", description: "The complete <!doctype html> document." },
+      },
+      required: ["filename", "html"],
+    },
+  },
+];</code></pre>
+
+      <div class="callout tip">
+        <strong>Write tool descriptions for a coworker, not a parser.</strong>
+        <p>The model has read tens of thousands of API docs and follows the
+        same conventions. "Returns up to 5 hex colors, primary first" tells
+        the model what to expect — which means it'll write less defensive
+        prompt code than if you just said "returns colors."</p>
+      </div>
+
+      <h2>Step 2: write the tool functions</h2>
+
+      <p>
+        Tool implementations are just regular TypeScript. They take an input
+        object (matching the schema), do something, and return whatever they
+        want. Whatever you return gets <code>JSON.stringify</code>'d and sent
+        back to Claude as the tool result.
+      </p>
+
+      <pre data-file="src/03-tools.ts"><code class="lang-ts">const KNOWN_BRANDS: Record<string, string[]> = {
+  "stripe.com":    ["#635bff", "#0a2540", "#fff", "#7a73ff", "#425466"],
+  "linear.app":    ["#5e6ad2", "#0f0f12", "#fff", "#8a8df0", "#1c1c20"],
+  "anthropic.com": ["#d97757", "#f0eee6", "#1f1f1d", "#3a3a36", "#f4ddc8"],
+};
+
+async function fetch_brand_colors(input: { domain: string }) {
+  const palette = KNOWN_BRANDS[input.domain.toLowerCase()];
+  if (palette) return { palette };
+  return {
+    palette: ["#1d1b18", "#d96e2b", "#faf8f4", "#4a463f", "#e6dfd1"],
+    note: "domain not in cache, returning a warm editorial palette",
+  };
+}
+
+async function save_page(input: { filename: string; html: string }) {
+  await mkdir("out", { recursive: true });
+  const path = resolve("out", input.filename);
+  await writeFile(path, input.html, "utf8");
+  return { path };
+}</code></pre>
+
+      <div class="callout warn">
+        <strong>Why the brand lookup is mocked</strong>
+        <p>A real <code>fetch_brand_colors</code> would scrape the site or
+        call a service. We hardcode three brands so the agent's behavior is
+        stable while you're learning. In Chapter 09 we wire it up to a real
+        MCP server. The agent doesn't know the difference — that's the
+        point.</p>
+      </div>
+
+      <h2>Step 3: the loop</h2>
+
+      <p>
+        The loop is the heart of the agent. Run a call, check
+        <code>stop_reason</code>: if it's <code>"tool_use"</code>, execute the
+        tools the model asked for and send the results back. Otherwise, stop.
+      </p>
+
+      <pre data-file="src/03-tools.ts"><code class="lang-ts">const messages: Anthropic.Messages.MessageParam[] = [
+  { role: "user", content: `Create a landing page for: ${topic}` },
+];
+
+while (true) {
+  const response = await client.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 4096,
+    system: PROMPT_WITH_TOOLS,
+    tools: TOOLS,
+    messages,
+  });
+
+  // 1. Remember what Claude said this turn.
+  messages.push({ role: "assistant", content: response.content });
+
+  // 2. If it didn't ask for any tools, we're done.
+  if (response.stop_reason !== "tool_use") break;
+
+  // 3. Otherwise, run every tool_use block and gather the results.
+  const tool_uses = response.content.filter(
+    (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+  );
+
+  const tool_results = [];
+  for (const use of tool_uses) {
+    const result = await runTool(use.name, use.input);
+    tool_results.push({
+      type: "tool_result",
+      tool_use_id: use.id,
+      content: JSON.stringify(result),
+    });
+  }
+
+  // 4. Hand the results back as the next user turn.
+  messages.push({ role: "user", content: tool_results });
+}</code></pre>
+
+      <p>
+        Three things to notice about this loop:
+      </p>
+
+      <ol>
+        <li><strong>The conversation is just an array.</strong> Each turn appends two messages — one assistant, one user (with tool results). The model has no other memory. If you don't push, the model forgets.</li>
+        <li><strong><code>tool_use_id</code> matters.</strong> When you send back a <code>tool_result</code>, it has to match the <code>id</code> Claude sent in the <code>tool_use</code> block. The model can request multiple tools in one turn — you have to return one result per id.</li>
+        <li><strong>There's no max iterations</strong> in this loop. That's fine for learning, dangerous for production. We add it in Chapter 09.</li>
+      </ol>
+
+      <div class="try-it">
+        <h4>Try it</h4>
+        <pre><code class="lang-bash">bun run tools "a SaaS dashboard for accountants like Stripe"</code></pre>
+        <p>Watch the terminal — you'll see the turns counted:</p>
+        <div class="expected">── turn 1 ──
+  stop_reason: tool_use
+  138 in · 412 out
+  → fetch_brand_colors(domain)
+
+── turn 2 ──
+  stop_reason: tool_use
+  624 in · 1932 out
+  → save_page(filename, html)
+
+── turn 3 ──
+  stop_reason: end_turn
+  2106 in · 84 out
+
+✓ saved to /…/out/stripe-style-dashboard.html
+  open /…/out/stripe-style-dashboard.html</div>
+        <p style="margin-top:10px;">Open the file. The accent color should
+        match Stripe's purple (<code>#635bff</code>) — that's the agent
+        having actually called <code>fetch_brand_colors("stripe.com")</code>.</p>
+      </div>
+
+      <h2>Tool vs not-a-tool: the smell test</h2>
+
+      <p>Things that should be tools:</p>
+      <ul>
+        <li>Reading data the model can't possibly know (today's date, a database row, a brand's actual colors).</li>
+        <li>Writing side effects the model shouldn't simulate (saving a file, sending an email, charging a card).</li>
+        <li>Calling an external API where the output is small (a price, a status, a row).</li>
+      </ul>
+
+      <p>Things that <em>shouldn't</em> be tools — even though you could make them tools:</p>
+      <ul>
+        <li><strong>Decisions the model can make itself.</strong> "Pick a font" is not a tool. The model can pick a font.</li>
+        <li><strong>Operations that return more than a couple of thousand tokens.</strong> Those eat context. Better: have the model write code and execute it.</li>
+        <li><strong>Anything that's actually a sub-task with branching logic.</strong> That's a subagent's job (Chapter 05).</li>
+      </ul>
+
+      <div class="callout tip">
+        <strong>From the StockPilot workshop</strong>
+        <p>"Tool returns &gt;2k tokens? → code execution instead. Writing
+        'always do X before Y' in the prompt? → skill. Subagent's output is
+        one number? → it shouldn't be a subagent."</p>
+        <p>You'll see all three of those flips happen before Chapter 10.</p>
+      </div>
+
+      <h2>What we built · what's still wrong · what's next</h2>
+
+      <div class="fact-row">
+        <div class="fact"><div class="k">Tools</div><div class="v">2</div></div>
+        <div class="fact"><div class="k">Avg turns</div><div class="v">2–3</div></div>
+        <div class="fact"><div class="k">Prompt length</div><div class="v">~15 lines</div></div>
+        <div class="fact"><div class="k">Output quality</div><div class="v">↑↑</div></div>
+      </div>
+
+      <p>
+        The output is noticeably better — the agent picks real palettes,
+        formats consistently, and saves files itself. But the system prompt
+        is still doing too much. It's mixing <em>format requirements</em>
+        ("emit <code>&lt;!doctype html&gt;</code>") with <em>style
+        guidance</em> ("warm accent color") with <em>output discipline</em>
+        ("call save_page exactly once"). Three different things, all in one
+        wall of text.
+      </p>
+
+      <p>
+        Chapter 04 moves the style guidance into a <em>skill</em> — a
+        markdown file the agent loads when it wants to. That's the second
+        big lever in the decomposition framework.
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">The agent calls <code>fetch_brand_colors</code> and you return a palette. Why do you have to also pass the <em>previous assistant message</em> back on the next turn?</div>
+        <div class="options">
+          <button class="opt" data-right="false">You don't — you can pass just the tool result.</button>
+          <button class="opt" data-right="true">The Messages API is stateless. The full conversation is only what you send in the <code>messages</code> array. If you skip the assistant turn, Claude won't see its own previous <code>tool_use</code> block and the <code>tool_use_id</code> in your <code>tool_result</code> won't refer to anything.</button>
+          <button class="opt" data-right="false">It's a convention but not strictly required.</button>
+          <button class="opt" data-right="false">For audit logging — the SDK ignores prior assistant messages.</button>
+        </div>
+        <div class="explain">
+          This is the most common source of "my agent loop hangs" bugs. The
+          API is stateless: every call sends the entire conversation. Each
+          <code>tool_result</code> references a <code>tool_use_id</code> from
+          an assistant turn — so that assistant turn has to be in the
+          messages array, or the model has no record of having asked.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./02-first-call.html"><span class="nav-label">← Previous</span><span class="nav-title">02 First call</span></a>
+        <a href="./04-skills.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">04 Skills</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

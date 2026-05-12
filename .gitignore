@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+example-agent/out/
+example-agent/.memory/
+example-agent/evals/reports/
+example-agent/bun.lock
+site/build/
+site/onepager.html
+*.log
+.DS_Store

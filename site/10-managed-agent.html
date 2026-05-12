@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>10 · Ship it — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch10">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 10</span><span class="sep">·</span><span>~25 min</span><span class="sep">·</span><span>workshop: ship-your-first-managed-agent</span>
+      </div>
+      <h1>Ship it</h1>
+      <p class="lead">
+        Take the agent you built on your laptop and deploy it as a Claude
+        Managed Agent — a hosted runtime that handles sessions, sandbox
+        execution, MCP routing, and confirmations for you. Same architecture
+        you wrote in Chapter 09, less of it on your servers.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Understand the four primitives — Agent, Environment, Session,
+        Events — and how each one maps to something you already wrote.
+        Walk through the deploy code, even if your org doesn't have access
+        to the beta yet, so you can see what the platform takes over from
+        you.</p>
+      </div>
+
+      <h2>The four primitives</h2>
+
+      <div class="diagram">
+        <pre>┌────────────────────────────────────────────────────────────┐
+│                                                            │
+│   AGENT          ENVIRONMENT       SESSION      EVENTS     │
+│   ─────          ───────────       ───────      ──────     │
+│   "what it is"   "where it runs"   "one chat"   "messages" │
+│                                                            │
+│   model          sandbox files     resources    user.msg   │
+│   prompt         allowed egress    memory       tool_use   │
+│   tools          MCP allowlist     start time   confirm    │
+│   skills                           ...          asst.text  │
+│   sub_agents                                     ...       │
+│                                                            │
+└────────────────────────────────────────────────────────────┘</pre>
+      </div>
+
+      <table>
+        <thead><tr><th>Primitive</th><th>What you wrote in the SDK chapters</th><th>What CMA gives you</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Agent</strong></td><td>A bunch of constants in <code>shared/prompts.ts</code> and tools in your code.</td><td>One named, versioned configuration. Updateable independently of any session.</td></tr>
+          <tr><td><strong>Environment</strong></td><td>Files on disk; whatever the OS lets you read.</td><td>An isolated container per session, with controlled data files and an egress allowlist.</td></tr>
+          <tr><td><strong>Session</strong></td><td>An array of messages in memory; vanishes when the script exits.</td><td>A first-class resource you can list, retrieve, attach memory to, and stream events from later.</td></tr>
+          <tr><td><strong>Events</strong></td><td>JSON you pushed into your trace.json by hand.</td><td>An ordered, durable, replayable event stream — the same one the Console shows you.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>The deploy, end to end</h2>
+
+      <p>
+        The Anthropic <code>ant</code> CLI ships a series of commands that
+        mirror these primitives. Here's what creating and running your agent
+        looks like from the terminal:
+      </p>
+
+      <pre data-file="terminal"><code class="lang-bash"># 1. Create the agent (system prompt + tools + skills + sub-agents)
+ant beta:agents create < agent.yaml
+# ✓ agent_01HZ4VK7B…
+
+# 2. Create the environment (sandbox config + data files)
+ant beta:environments create < environment.yaml
+# ✓ env_01HZ4VK7…
+
+# 3. (Optional) Create a memory store
+ant beta:memory-stores create --name "leadpage-brands"
+# ✓ mem_01HZ4VK7…
+
+# 4. Start a session with a user message
+SES=$(ant beta:sessions create \
+  --agent agent_01HZ4VK7B… \
+  --environment-id env_01HZ4VK7… \
+  --resource '{"type":"memory_store","memory_store_id":"mem_…","access":"read_write"}' \
+  --title "vegan meal kits, FreshLeaf" \
+  --format json | jq -r .id)
+
+# 5. Send the first event
+ant beta:sessions:events send --session-id "$SES" \
+  --event '{"type":"user.message","content":[{"type":"text","text":"Make me a landing page for vegan meal kits for busy parents."}]}'
+
+# 6. Watch the response stream
+ant beta:sessions:events stream --session-id "$SES" --max-items -1 --format pretty</code></pre>
+
+      <h2>The same thing from the SDK</h2>
+
+      <p>
+        The CLI commands map one-to-one onto SDK methods on
+        <code>client.beta</code>. The deploy script in your project is a
+        runnable version of the same flow — annotated heavily so you can
+        read it before you have access:
+      </p>
+
+      <pre data-file="src/10-managed-agent.ts"><code class="lang-ts">// 1. Create the agent
+const agent = await client.beta.agents.create({
+  name: "leadpage-creator",
+  model: "claude-sonnet-4-6",
+  system_prompt: "You design and write landing pages.",
+  skills: [
+    { name: "conversion-copy", content: conversionCopy },
+    { name: "hero-patterns",   content: heroPatterns },
+  ],
+  tools: [
+    {
+      name: "publish_page",
+      description: "Publish to htmlpub.com — gated.",
+      confirmation_required: true,
+      input_schema: { type: "object", properties: { … } },
+    },
+  ],
+  mcp_servers: [
+    { url: "https://htmlpub.com/mcp", auth: { vault_id: "vault_…" } },
+  ],
+});
+
+// 2. Environment
+const env = await client.beta.environments.create({
+  name: "leadpage-creator-env",
+  allowed_network_egress: ["htmlpub.com"],
+});
+
+// 3. Memory store (optional)
+const mem = await client.beta.memoryStores.create({ name: "leadpage-brands" });
+
+// 4. Session
+const session = await client.beta.sessions.create({
+  agent_id: agent.id,
+  environment_id: env.id,
+  resources: [{ type: "memory_store", memory_store_id: mem.id, access: "read_write" }],
+});
+
+// 5. Send + 6. Stream
+await client.beta.sessions.events.send({
+  session_id: session.id,
+  event: { type: "user.message", content: [{ type: "text", text: "Make me a page…" }] },
+});
+
+for await (const event of await client.beta.sessions.events.stream({ session_id: session.id })) {
+  if (event.type === "assistant.text_delta") process.stdout.write(event.text);
+  if (event.type === "tool_confirmation_required") { /* approve... */ }
+}</code></pre>
+
+      <div class="callout warn">
+        <strong>Beta surface</strong>
+        <p>The Managed Agents API is in beta as of CWC 2026. Field names and
+        method shapes can shift before GA — check
+        <a href="https://platform.claude.com/docs/en/managed-agents/overview">platform.claude.com/docs/en/managed-agents</a>
+        for the current schema. The TS file in <code>src/10-managed-agent.ts</code>
+        has <code>@ts-expect-error</code> on the beta methods so it'll
+        still typecheck against today's SDK.</p>
+      </div>
+
+      <h2>What CMA does for you, concretely</h2>
+
+      <table>
+        <thead><tr><th>You had to write…</th><th>CMA does…</th></tr></thead>
+        <tbody>
+          <tr><td>An agent loop with retries and a <code>tool_use_id</code> bookkeeping</td><td>Hosts the loop; you push events in, events come back out.</td></tr>
+          <tr><td>A sandbox to run agent-generated code in</td><td>Per-session container with code execution; you set the egress list.</td></tr>
+          <tr><td>Storage for sessions + the ability to resume later</td><td>Sessions are first-class resources, listable, retrievable, replayable.</td></tr>
+          <tr><td>A Vault for OAuth tokens you don't want in env vars</td><td>Vault primitive; agents reference tokens by vault_id, never see the value.</td></tr>
+          <tr><td>An events viewer for debugging the agent's behavior</td><td>The Console shows every session's full event timeline, including tool calls and skills loaded.</td></tr>
+          <tr><td>A way to deploy sub-agents with their own threads + observability</td><td><code>sub_agents</code> field on the agent config; each invocation creates its own thread you can click into.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>SDK or Managed Agents — when which?</h2>
+
+      <table>
+        <thead><tr><th>Pick…</th><th>When…</th></tr></thead>
+        <tbody>
+          <tr><td><strong>SDK only</strong></td><td>You want to host the agent in your own service, alongside your own auth and data path. You don't need a sandbox. You're comfortable owning the event log and session DB.</td></tr>
+          <tr><td><strong>Managed Agents</strong></td><td>You want sandboxed code execution, observable sub-agents, a Console for debugging, and the Memory/Dreaming primitives without building them. The trade-off is your agent's lifecycle moves to Anthropic's side.</td></tr>
+          <tr><td><strong>Both</strong></td><td>Common: SDK in your own backend for routing, persistence, and per-user logic — calling out to a Managed Agent for the agent loop itself.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="try-it">
+        <h4>Try it (CMA beta access required)</h4>
+        <pre><code class="lang-bash">bun run deploy</code></pre>
+        <p>If your org has the Managed Agents beta enabled, you'll see each
+        primitive get created and a live event stream:</p>
+        <div class="expected">▸ deploying leadpage-creator to Claude Managed Agents…
+
+✓ agent created: agent_01HZ4VK7BPNNGE…
+✓ environment created: env_01HZ4VK7BP…
+✓ memory store: mem_01HZ4VK7BP…
+✓ session created: sess_01HZ4VK7BP…
+
+--- live transcript ---
+
+(streaming HTML appears here, then…)
+
+  GATE → publish_page({"title":"FreshLeaf"…})
+  [end of message]</div>
+        <p style="margin-top:10px;">If you don't have access, read the script
+        top to bottom — every line maps to something you already understand
+        from earlier chapters.</p>
+      </div>
+
+      <h2>Where to go next</h2>
+
+      <p>You've built — and understand — every part of:</p>
+
+      <ol>
+        <li>The model layer (Haiku, Sonnet, Opus — and when to use which).</li>
+        <li>The tool layer (function calling, the agent loop, the gate pattern).</li>
+        <li>The skill layer (instructions on demand, the load_skill pattern).</li>
+        <li>The decomposition layer (orchestrator + subagents).</li>
+        <li>The memory layer (per-user state across sessions; Dreaming as consolidation).</li>
+        <li>The eval layer (datasets, two-layer graders, baselines, deltas).</li>
+        <li>The model-selection layer (sweeps, the 5%-rule).</li>
+        <li>The production layer (streaming, retries, gates, observability, MCP).</li>
+        <li>The platform layer (Agent → Environment → Session → Events).</li>
+      </ol>
+
+      <p>
+        Take the example agent home. Point it at your own MCP server. Swap
+        the brief format for whatever shape your domain uses. Replace the
+        Leadpage skills with your domain's skills. The same nine pieces
+        snap together for any agent that has tools, makes decisions, and
+        produces structured output.
+      </p>
+
+      <p>
+        And go back to the source — the eight CWC workshops in
+        <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a>.
+        Each one of them goes deeper into one layer than this tutorial can.
+        StockPilot has the full decomposition story; Deal Desk has the
+        production multi-agent UI; Agents That Remember has the Dreaming
+        flow; Incident-2277 has the minimal CMA deploy. You now have the
+        vocabulary to follow any of them.
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">In your SDK loop, you wrote <code>messages.push(&#123;role:"user", content: tool_results&#125;)</code> on every turn. What corresponds to that <em>step</em> on the Managed Agents side?</div>
+        <div class="options">
+          <button class="opt" data-right="false">You still call <code>messages.push</code> — the SDK and CMA share an in-memory array.</button>
+          <button class="opt" data-right="true">Nothing — the platform runs the loop and handles the tool_result step internally. You just listen for events on the session.</button>
+          <button class="opt" data-right="false">You send a <code>system.tool_result</code> event.</button>
+          <button class="opt" data-right="false">It happens inside the Environment.</button>
+        </div>
+        <div class="explain">
+          On the SDK side, the loop is in your code: you fetch a response,
+          you execute tools, you push the results back, you call again. On
+          the Managed Agents side, the platform runs that whole loop —
+          including the tool-result bookkeeping — inside the session. You
+          only see the inbound and outbound events (<code>user.message</code>,
+          <code>assistant.text_delta</code>, <code>tool_confirmation_required</code>,
+          etc.). That's the main thing CMA does for you: it owns the loop.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./09-production.html"><span class="nav-label">← Previous</span><span class="nav-title">09 Production</span></a>
+        <a href="./index.html" class="next"><span class="nav-label">Home</span><span class="nav-title">Tutorial index</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

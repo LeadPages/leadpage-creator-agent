@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>02 · First call — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch02">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 02</span><span class="sep">·</span><span>~15 min</span><span class="sep">·</span><span>API basics</span>
+      </div>
+      <h1>First call</h1>
+      <p class="lead">
+        One prompt in, one HTML page out. No tools, no loop. The smallest
+        thing that could possibly be called a "Leadpage Creator," to give
+        you something concrete to make better.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Make exactly one <code>messages.create</code> call. Save the result
+        to disk. Open it in a browser. By the end you'll understand the four
+        parameters every Claude call needs, and you'll see the thing that's
+        broken about a no-loop agent (it'll be obvious).</p>
+      </div>
+
+      <h2>The whole program</h2>
+
+      <p>
+        The source for this chapter is already in your project at
+        <code>example-agent/src/02-first-call.ts</code>. Open it now — here's
+        what's in it:
+      </p>
+
+      <pre data-file="src/02-first-call.ts"><code class="lang-ts">import { mkdir, writeFile } from "node:fs/promises";
+import { client, DEFAULT_MODEL, extractHtml, firstText } from "./shared/client.ts";
+import { PROMPT_NAIVE } from "./shared/prompts.ts";
+
+async function main() {
+  const topic = process.argv.slice(2).join(" ").trim() || "vegan meal kits for busy parents";
+
+  const response = await client.messages.create({
+    model: DEFAULT_MODEL,                                  // claude-sonnet-4-6
+    max_tokens: 4096,
+    system: PROMPT_NAIVE,                                  // instructions
+    messages: [
+      { role: "user", content: `Create a landing page for: ${topic}` },
+    ],
+  });
+
+  const html = extractHtml(firstText(response.content));
+
+  await mkdir("out", { recursive: true });
+  await writeFile("out/02-first-call.html", html, "utf8");
+  console.log("✓ wrote out/02-first-call.html");
+  console.log(`  ${response.usage.input_tokens} in · ${response.usage.output_tokens} out`);
+}
+
+main().catch(console.error);</code></pre>
+
+      <p>That's the whole thing. Forty lines, most of it ceremony.</p>
+
+      <h2>The four parameters</h2>
+
+      <p>Every <code>messages.create</code> call has these four:</p>
+
+      <table>
+        <thead><tr><th>Param</th><th>What it is</th><th>Here, what we used</th></tr></thead>
+        <tbody>
+          <tr><td><code>model</code></td><td>Which Claude. Pricing and quality scale with this.</td><td><code>claude-sonnet-4-6</code> — balanced default.</td></tr>
+          <tr><td><code>max_tokens</code></td><td>How long the reply can be. Hard limit; the model will stop.</td><td><code>4096</code> — comfortably enough for a landing page.</td></tr>
+          <tr><td><code>system</code></td><td>The role / rules / persistent instructions. Counted as input tokens.</td><td>A 12-line prompt that says "you make landing pages, here's the format."</td></tr>
+          <tr><td><code>messages</code></td><td>The conversation. For a one-shot call, just <code>[{role: "user", content: "..."}]</code>.</td><td>One user message with the topic embedded.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>The system prompt</h2>
+
+      <p>
+        Look at <code>src/shared/prompts.ts</code> — there's a constant called
+        <code>PROMPT_NAIVE</code> we passed as <code>system</code>:
+      </p>
+
+      <pre data-file="src/shared/prompts.ts"><code class="lang-ts">export const PROMPT_NAIVE = `
+You design and write landing pages. Given a topic, produce a single, complete
+HTML document the user can save and open directly.
+
+Requirements:
+- Emit a complete <!doctype html> page with <head> and <body>.
+- Inline all CSS in a <style> tag — no external assets.
+- Include: one <h1> headline, a 1-sentence subhead, two value-prop paragraphs,
+  and a primary call-to-action button.
+- Use a single warm accent color for buttons and headings.
+- Keep it under 200 lines.
+
+Output ONLY the HTML. No prose before or after.
+`.trim();</code></pre>
+
+      <p>
+        That's an entire feature spec. Output format, layout, styling, length
+        — all of it in the system prompt. <strong>This works fine.</strong>
+        For small, well-defined tasks, you can absolutely just write good
+        instructions and hit send.
+      </p>
+
+      <p>
+        It's also a trap. Watch what happens to this prompt over the next few
+        chapters. It's going to grow. Then we'll split it.
+      </p>
+
+      <div class="try-it">
+        <h4>Try it</h4>
+        <p>In <code>example-agent/</code>, run:</p>
+        <pre><code class="lang-bash">bun run first-call "vegan meal kits for busy parents"</code></pre>
+        <p>Expect about 5-15 seconds, then:</p>
+        <div class="expected">▸ topic: vegan meal kits for busy parents
+▸ model: claude-sonnet-4-6
+▸ calling Claude…
+✓ wrote out/02-first-call.html
+  input tokens:  138
+  output tokens: 1842
+
+Open it: open out/02-first-call.html</div>
+        <p style="margin-top:10px;">Open the file in a browser. You should see a real, styled landing page.</p>
+      </div>
+
+      <h2>What just happened</h2>
+
+      <p>
+        Your code sent four things over the network — model, max_tokens,
+        system, messages — and got back a JSON object. The object's
+        <code>content</code> field is an array of "blocks." For a text-only
+        reply like this one, there's just one block of type <code>"text"</code>
+        whose <code>text</code> field is a complete HTML document.
+      </p>
+
+      <p>
+        We pulled the text out with <code>firstText()</code> (which is just
+        <code>response.content.find(b =&gt; b.type === "text").text</code>),
+        wrote it to a file, and opened it. That's it.
+      </p>
+
+      <p>
+        The <code>extractHtml()</code> helper is a defensive trim: sometimes
+        the model wraps the HTML in markdown fences (```html ... ```) even
+        when we ask it not to. The helper strips them. In production you'd
+        prefer to enforce the format with a tool call (Chapter 03) rather
+        than parse it out.
+      </p>
+
+      <h2>Try changing the topic</h2>
+
+      <p>Run a few different topics:</p>
+
+      <pre><code class="lang-bash">bun run first-call "a SaaS dashboard for solo accountants"
+bun run first-call "a 4-week marathon training program"
+bun run first-call "an indie video game launch"</code></pre>
+
+      <p>
+        Each one overwrites <code>out/02-first-call.html</code>. Open it after
+        each run. Notice:
+      </p>
+
+      <ul>
+        <li>The model picks plausible colors but has no idea about <em>your</em> brand.</li>
+        <li>The copy is competent but generic — "Unlock your potential" generic.</li>
+        <li>If you ran it twice with the same topic, you'd get different output. There's no consistency.</li>
+        <li>If the model decides to chat first ("Sure, here's a landing page!") and then emit the HTML, our regex hack handles it — but barely.</li>
+      </ul>
+
+      <h2>Why this is a bad agent (yet)</h2>
+
+      <p>
+        This isn't an agent. It's a single LLM call. The model can't:
+      </p>
+
+      <ul>
+        <li>Look up the user's brand colors — there's no tool to call.</li>
+        <li>Save the file itself — your code does that, after the fact.</li>
+        <li>Decide it needs more context — there's no second turn.</li>
+        <li>Refuse if the topic is unsafe — well, it can refuse, but it can only refuse with text.</li>
+      </ul>
+
+      <p>
+        Every one of those is fixed by the same trick: <strong>give the model
+        a list of tools, and run a loop that lets it call them.</strong> That's
+        Chapter 03.
+      </p>
+
+      <h2>What we built · what's broken · what's next</h2>
+
+      <div class="fact-row">
+        <div class="fact">
+          <div class="k">Lines of code</div>
+          <div class="v">~40</div>
+        </div>
+        <div class="fact">
+          <div class="k">API calls per request</div>
+          <div class="v">1</div>
+        </div>
+        <div class="fact">
+          <div class="k">Tools available</div>
+          <div class="v">0</div>
+        </div>
+        <div class="fact">
+          <div class="k">Output consistency</div>
+          <div class="v">Bad</div>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <strong>The path forward</strong>
+        <p>Chapter 03 turns this single call into a loop with two tools.
+        Chapter 04 moves part of the system prompt out into a skill. Chapter
+        05 splits the agent into specialists. By Chapter 07, we'll be able
+        to measure how much better each step makes it — but the first jump,
+        from a one-shot call to a tool-using agent, is the biggest.</p>
+      </div>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">If you set <code>max_tokens: 64</code> on this call, what would you most likely see?</div>
+        <div class="options">
+          <button class="opt" data-right="false">An error — the API refuses requests that can't possibly fit the response.</button>
+          <button class="opt" data-right="true">A truncated HTML document with <code>stop_reason: "max_tokens"</code>. The opening <code>&lt;!doctype html&gt;</code> would be there but the page would cut off mid-tag.</button>
+          <button class="opt" data-right="false">The same complete HTML — Claude treats it as a soft suggestion.</button>
+          <button class="opt" data-right="false">Just plain text instead of HTML.</button>
+        </div>
+        <div class="explain">
+          <code>max_tokens</code> is a hard cap. The model writes until it
+          hits it, then stops mid-sentence. The response object has
+          <code>stop_reason: "max_tokens"</code> so you can detect it
+          programmatically — much better than scanning the text for an
+          unclosed <code>&lt;/html&gt;</code>.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./01-setup.html"><span class="nav-label">← Previous</span><span class="nav-title">01 Setup</span></a>
+        <a href="./03-tools.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">03 Tools</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

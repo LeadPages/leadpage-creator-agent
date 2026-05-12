@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>00 · What you'll build — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch00">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 00</span>
+        <span class="sep">·</span>
+        <span>~15 min read</span>
+        <span class="sep">·</span>
+        <span>no code yet</span>
+      </div>
+      <h1>What you'll build</h1>
+      <p class="lead">
+        A Leadpage Creator: one command in, one polished landing page out.
+        This chapter shows you the finished thing, then walks you through the
+        ten ideas that make it work.
+      </p>
+
+      <div class="callout goal">
+        <strong>By the end of this chapter</strong>
+        <p>You'll know what an "agent" is in concrete terms, what the final
+        product looks like, and the order we'll build it in. No code yet —
+        Chapter 01 sets up the environment.</p>
+      </div>
+
+      <h2>The finished thing</h2>
+
+      <p>
+        You type:
+      </p>
+
+      <pre><code class="lang-ts">$ bun run deploy
+$ leadpages create "vegan meal kits for busy parents"</code></pre>
+
+      <p>
+        About 15 seconds later, a tab opens in your browser with this:
+      </p>
+
+      <div class="diagram">
+        <pre>┌─────────────────────────────────────────────────────────────┐
+│  🌱 FreshLeaf · meal kits                       [Try a box] │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│    Plant-based dinners that don't ask                       │
+│    for thirty minutes you don't have.                       │
+│                                                             │
+│    Pre-portioned, parent-tested, on your table              │
+│    in 15 minutes flat.                                      │
+│                                                             │
+│       ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰  Try your first box →                │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│   ⏱ 15-min cooking · 🥦 30+ recipes · 🚚 weekly delivery    │
+└─────────────────────────────────────────────────────────────┘</pre>
+      </div>
+
+      <p>
+        That's not a template. The agent decided on the headline, the subhead,
+        the call-to-action, the icons, the color palette, and the page layout
+        — but it didn't decide it alone. Several specialized parts did
+        different bits of the work, and each one knew exactly what it was
+        responsible for.
+      </p>
+
+      <h2>What's an "agent," concretely?</h2>
+
+      <p>
+        Forget the marketing for a second. An agent is three things:
+      </p>
+
+      <ol>
+        <li>A <strong>model</strong> (Claude — Haiku, Sonnet, or Opus).</li>
+        <li>A <strong>set of tools</strong> it's allowed to call (functions you defined).</li>
+        <li>A <strong>loop</strong>: send a message → model thinks → either it returns text and stops, or it asks to call a tool → you call the tool → you send the result back → repeat.</li>
+      </ol>
+
+      <p>
+        That's it. Everything else — skills, subagents, memory, evals — is a
+        pattern <em>built on top</em> of this loop. The reason agents feel
+        magical is the loop, not the model. Without the loop, Claude is a
+        sophisticated text completer. With the loop, Claude can do things.
+      </p>
+
+      <div class="diagram">
+        <pre>You ──▶ Claude ──┬─▶ text out  ──▶ done
+                 │
+                 └─▶ "call save_page(html='...')"
+                          │
+                          ▼
+                     Your code runs the tool, returns the result
+                          │
+                          ▼
+                     Back to Claude → repeats until "done"</pre>
+      </div>
+
+      <h2>The path: ten chapters, one idea each</h2>
+
+      <p>
+        We're going to build the Leadpage Creator in ten steps. Each one adds
+        exactly one capability. We won't add the second thing until the first
+        is working and you understand why we needed it.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>#</th><th>Chapter</th><th>The idea</th><th>Workshop it mirrors</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>01</td><td>Setup</td><td>Get bun installed, get an API key, scaffold the project.</td><td>—</td></tr>
+          <tr><td>02</td><td>First call</td><td>A single API call: prompt in, HTML out. This is where the agent <em>doesn't</em> have a loop yet — useful as a baseline.</td><td>—</td></tr>
+          <tr><td>03</td><td>Tools</td><td>Give the agent two functions: <code>fetch_brand_colors</code> and <code>save_page</code>. Implement the loop.</td><td>tool use</td></tr>
+          <tr><td>04</td><td>Skills</td><td>Some instructions are too big for the system prompt. A skill is a chunk of instructions the agent <em>loads</em> only when relevant.</td><td>agent-decomposition</td></tr>
+          <tr><td>05</td><td>Decomposition</td><td>Split the agent into an orchestrator + a copywriter subagent + a designer subagent. Each one has its own context, its own job.</td><td>agent-decomposition</td></tr>
+          <tr><td>06</td><td>Memory</td><td>Persist a brand kit across sessions. The agent stops asking the same questions twice.</td><td>agents-that-remember</td></tr>
+          <tr><td>07</td><td>Evals</td><td>A test set + a grader + a baseline. Now every change has a number attached.</td><td>eval-driven-agent-development</td></tr>
+          <tr><td>08</td><td>Right model</td><td>Run the eval set across Haiku, Sonnet, Opus. Use the cheapest model that meets quality.</td><td>rightmodel</td></tr>
+          <tr><td>09</td><td>Production</td><td>Stream tokens, handle errors, gate the publish action, integrate with HTMLPub via MCP.</td><td>production-ready-agent</td></tr>
+          <tr><td>10</td><td>Ship it</td><td>Deploy as a Claude Managed Agent. Now anyone with the URL can call it.</td><td>ship-your-first-managed-agent</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Three pieces of vocab to know now</h2>
+
+      <p>
+        These three words come up in every chapter. Lock them in before
+        moving on, because the decisions you'll make later — "should this be
+        a tool or a skill?" — depend on knowing what each one means.
+      </p>
+
+      <div class="diagram">
+        <pre>        cheaper, simpler  ◀────────────────────────────▶  more power, more cost
+
+        TOOL                   SKILL                   SUBAGENT
+        a function the         instructions the         another agent — its
+        agent can call;        agent loads on demand    own loop, its own
+        stateless,             when it decides it's     context, its own
+        deterministic          relevant                 goal</pre>
+      </div>
+
+      <p style="margin-top: 8px;">
+        <strong>Smell tests</strong> (from the StockPilot workshop):
+      </p>
+      <ul>
+        <li>A tool that returns 2,000+ tokens of output? → make it code execution or a subagent instead.</li>
+        <li>You're writing "always do X before Y" in the system prompt? → move it into a skill.</li>
+        <li>The subagent's output is one number? → it shouldn't be a subagent. Make it a tool.</li>
+      </ul>
+
+      <h2>What you'll need</h2>
+
+      <div class="fact-row">
+        <div class="fact">
+          <div class="k">Time to finish</div>
+          <div class="v">~4<span class="unit">hours, total</span></div>
+        </div>
+        <div class="fact">
+          <div class="k">Files to write</div>
+          <div class="v">~12<span class="unit">small TS files</span></div>
+        </div>
+        <div class="fact">
+          <div class="k">API cost</div>
+          <div class="v">$2–5<span class="unit">end-to-end</span></div>
+        </div>
+        <div class="fact">
+          <div class="k">Prior knowledge</div>
+          <div class="v">JS<span class="unit"> · agent stuff = no</span></div>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <strong>Two decisions you don't have to make yet</strong>
+        <p>You don't have to commit to one model or one deployment target up
+        front. We'll start with Sonnet 4.6 and a single local script. Once
+        you have something that works, you'll pick the right model
+        per-subagent in Chapter 08 and decide whether to host it yourself or
+        ship it as a managed agent in Chapter 10. The whole point of the
+        tutorial is to make those decisions <em>measured</em>, not pre-decided.</p>
+      </div>
+
+      <h2>How to use this tutorial</h2>
+
+      <ol>
+        <li>Read each chapter on this site.</li>
+        <li>Keep a terminal open in <code>example-agent/</code>.</li>
+        <li>Run the chapter's command. Look at the output. Read the source.</li>
+        <li>Answer the checkpoint quiz to mark the chapter complete.</li>
+        <li>Move to the next one.</li>
+      </ol>
+
+      <p>
+        Don't skim. The chapters are short on purpose, but each one introduces
+        one idea you'll keep using. The "Try it" boxes are the most important
+        part — that's where you'll see the agent actually doing something.
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">What's the difference between "Claude" and "an agent"?</div>
+        <div class="options">
+          <button class="opt" data-right="false">Agents use a fancier model than Claude.</button>
+          <button class="opt" data-right="true">An agent is Claude plus a set of tools it can call plus the loop that lets it call them and read the results.</button>
+          <button class="opt" data-right="false">Agents are deployed in the cloud; Claude is just an API.</button>
+          <button class="opt" data-right="false">Agents only work with the Managed Agents platform.</button>
+        </div>
+        <div class="explain">
+          The model is the same. The "agent" part is the wrapping: a list of
+          tools the model is allowed to ask for, and a loop in your code that
+          actually executes those tool calls and sends the results back. You'll
+          write that loop yourself in Chapter 03.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./index.html"><span class="nav-label">← Home</span><span class="nav-title">Tutorial index</span></a>
+        <a href="./01-setup.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">01 Setup</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

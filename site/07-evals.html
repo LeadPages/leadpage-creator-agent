@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>07 · Evals — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch07">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 07</span><span class="sep">·</span><span>~30 min</span><span class="sep">·</span><span>workshop: eval-driven-agent-development</span>
+      </div>
+      <h1>Evals</h1>
+      <p class="lead">
+        "It feels better" isn't a number. We build a six-task test set and a
+        two-layer grader, run it against the agent we have, save the score
+        as the baseline. From here on, every change has a delta.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Stop vibing. Build an eval suite the rest of the tutorial uses
+        as ground truth. After this chapter, when a future chapter says
+        "this is better," there will be a number behind that claim.</p>
+      </div>
+
+      <h2>Why evals before everything else</h2>
+
+      <p>
+        Every chapter so far has been "now the agent has X, isn't this
+        better?" The honest answer is: we don't know. Generative outputs
+        are easy to over-rate when you wrote the prompt yourself. You
+        remember the run that looked great. You forget the run that hung
+        on a footer.
+      </p>
+
+      <p>
+        An eval suite is three pieces:
+      </p>
+
+      <ol>
+        <li>A <strong>dataset</strong> of representative inputs.</li>
+        <li>A <strong>grader</strong> that scores each output.</li>
+        <li>A <strong>baseline</strong> — the score before your change.</li>
+      </ol>
+
+      <p>
+        With those, every prompt edit becomes a number, and the question
+        "did this help?" becomes answerable.
+      </p>
+
+      <h2>The dataset</h2>
+
+      <p>
+        Six tasks. Just enough variety that a single trick won't ace all of
+        them. Each task has the brief, the words we expect to see in the
+        output, and the page's primary goal (so the LLM judge knows what to
+        weight).
+      </p>
+
+      <pre data-file="evals/dataset.json"><code class="lang-json">{
+  "tasks": [
+    { "id": "T1-veg-meals",       "brief": "vegan meal kits for busy parents", ... },
+    { "id": "T2-saas-accountants","brief": "a SaaS dashboard for solo accountants — feels like Stripe's design", ... },
+    { "id": "T3-marathon",        "brief": "a 4-week marathon training program for runners who've already done a half", ... },
+    { "id": "T4-indie-game",      "brief": "an indie cozy farming game launching on Steam", ... },
+    { "id": "T5-coming-soon",     "brief": "a flat coming-soon splash, just a logo and an email field, for a B2B SaaS in stealth", ... },
+    { "id": "T6-pricing-plain",   "brief": "a single pricing page for a consulting firm — three tiers, no marketing fluff", ... }
+  ]
+}</code></pre>
+
+      <div class="callout tip">
+        <strong>What makes a good eval task</strong>
+        <ul>
+          <li><strong>Specific</strong> — "vegan meal kits for busy parents" beats "a food page".</li>
+          <li><strong>Adversarial-ish</strong> — at least one task that breaks your prompt's assumptions (T5: no hero needed, just an email field).</li>
+          <li><strong>Covers what matters</strong> — your suite should include the kinds of briefs you actually get.</li>
+          <li><strong>Stable</strong> — don't rewrite the dataset every time the agent fails it. The dataset is the spec.</li>
+        </ul>
+      </div>
+
+      <h2>The grader, two layers</h2>
+
+      <p>
+        The eval-driven workshop's pattern: combine fast deterministic
+        checks with an LLM judge. Each layer catches what the other
+        misses.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Layer</th><th>Checks</th><th>Why it's there</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Programmatic</strong></td>
+            <td>Has <code>&lt;!doctype html&gt;</code>; has an <code>&lt;h1&gt;</code> (4–16 words); has a button/link CTA (≤6 words); has ≥1 body paragraph; mentions at least half the <code>must_mention</code> words.</td>
+            <td>Catches structural failures cheaply. If this fails, we don't even ask the judge.</td>
+          </tr>
+          <tr>
+            <td><strong>LLM-as-judge</strong></td>
+            <td>Three 1-5 scores: <em>conversion_quality</em>, <em>brand_fit</em>, <em>layout_appropriate</em>, plus a short rationale. Pass = average ≥ 3.5.</td>
+            <td>Catches the things only a reader can catch — tone, specificity, whether the layout actually matches what the brief asked for.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <pre data-file="evals/grader.ts"><code class="lang-ts">// Programmatic
+export function gradeProgrammatic(task: Task, html: string): ProgrammaticScore {
+  const has_doctype  = /<!doctype html/i.test(html);
+  const h1           = (html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || "";
+  const has_h1       = h1.replace(/<[^>]*>/g, "").trim().length > 0;
+  const cta          = html.match(/<(button|a)[^>]*>([\s\S]*?)<\/\1>/i);
+  const has_cta      = !!cta;
+  const mention_hits = task.must_mention.filter((w) =>
+                         html.toLowerCase().includes(w.toLowerCase())).length;
+  const pass = has_doctype && has_h1 && has_cta &&
+               mention_hits >= Math.ceil(task.must_mention.length / 2);
+  return { has_doctype, has_h1, has_cta, mention_hits, pass, /* ... */ };
+}</code></pre>
+
+      <pre data-file="evals/grader.ts"><code class="lang-ts">// LLM judge
+const JUDGE_SYSTEM = `
+You are a senior conversion-optimization reviewer. You grade landing pages
+on three axes (1-5 integers). Be honest — most pages don't deserve a 5.
+1. conversion_quality: outcome-led? specific CTA? concrete claims?
+2. brand_fit: design matches the brief?
+3. layout_appropriate: hero pattern right for this kind of page?
+
+Return ONLY: {"conversion_quality": N, "brand_fit": N, "layout_appropriate": N,
+"rationale": "one sentence"}.
+`;
+
+export async function gradeWithJudge(task: Task, html: string): Promise<JudgeScore> {
+  const trimmed = html.replace(/<style[\s\S]*?<\/style>/gi, "<style>…</style>").slice(0, 8000);
+  const response = await client.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 500,
+    system: JUDGE_SYSTEM,
+    messages: [{ role: "user", content: `Brief: ${task.brief}\n…\n${trimmed}` }],
+  });
+  // parse the JSON…
+}</code></pre>
+
+      <div class="callout warn">
+        <strong>The LLM judge has biases — name them</strong>
+        <p>From the rightmodel/eval-audit checklist: LLM judges tend to
+        over-rate longer outputs, well-formatted outputs, and outputs
+        written by the same model family as the judge. Mitigations: use
+        a different model family as judge than as agent, score
+        absolutely (not pairwise), and check the rationale text for
+        sycophantic language.</p>
+      </div>
+
+      <h2>Running the eval</h2>
+
+      <p>The runner loops every task through the current agent, scores it, and prints a table:</p>
+
+      <div class="try-it">
+        <h4>Try it</h4>
+        <pre><code class="lang-bash">bun run eval                # uses the v05 decomposition agent
+bun run eval --baseline     # save this run as the baseline</code></pre>
+        <p>Expected output:</p>
+        <div class="expected">▸ agent: v05   tasks: 6
+  T1-veg-meals          prog ✓  judge ✓ (3.7/5)  9.4s
+  T2-saas-accountants   prog ✓  judge ✓ (4.0/5)  10.1s
+  T3-marathon           prog ✓  judge ✓ (3.7/5)  8.9s
+  T4-indie-game         prog ✓  judge ✓ (3.5/5)  9.0s
+  T5-coming-soon        prog ✓  judge ✗ (3.0/5)  6.2s    ← too much hero
+  T6-pricing-plain      prog ✓  judge ✓ (3.7/5)  9.6s
+
+  ── score: 5 / 6 (83%)
+  ↳ saved as baseline</div>
+      </div>
+
+      <h2>Iterate. Measure. Stop arguing.</h2>
+
+      <p>
+        Now the workflow gets disciplined. You make a change (edit a system
+        prompt, swap a model, refactor a subagent). You run the eval.
+        You see what flipped.
+      </p>
+
+      <pre><code class="lang-bash"># scenario: T5 (coming-soon) failed. We add a hint in the orchestrator
+# to skip the hero on minimal briefs. Then:
+
+bun run eval
+
+▸ agent: v05   tasks: 6
+  T1-veg-meals          prog ✓  judge ✓ (3.7/5)  …
+  T2-saas-accountants   prog ✓  judge ✓ (4.0/5)  …
+  T3-marathon           prog ✓  judge ✓ (3.7/5)  …
+  T4-indie-game         prog ✓  judge ✓ (3.7/5)  …
+  T5-coming-soon        prog ✓  judge ✓ (4.0/5)  …   ← flipped!
+  T6-pricing-plain      prog ✓  judge ✓ (3.7/5)  …
+
+  ── score: 6 / 6 (100%)
+  ↳ baseline was 5/6 (+1)
+     → PASS  T5-coming-soon</code></pre>
+
+      <p>
+        That last line — "→ PASS T5-coming-soon" — is what changes the
+        feedback loop. Before, you'd push the change and ask a teammate "is
+        this better?" Now you push the change and look at the diff.
+      </p>
+
+      <h2>Comparing two versions of the agent</h2>
+
+      <p>
+        The eval runner takes an <code>--agent</code> flag. You can compare
+        v02 (the first-call baseline) and v05 (the decomposition version):
+      </p>
+
+      <pre><code class="lang-bash">bun run eval --agent v02 --baseline   # save v02 score as baseline
+bun run eval --agent v05              # run v05, compare</code></pre>
+
+      <p>
+        This is how you justify the complexity. If decomposition (v05)
+        doesn't beat the first-call (v02) by a meaningful margin on the
+        eval set, you've been spending architecture for nothing.
+      </p>
+
+      <div class="callout tip">
+        <strong>Calibrate the dataset, then leave it alone</strong>
+        <p>Spend an hour up front making the dataset good. After that,
+        don't touch it — every change you make to the dataset invalidates
+        every prior baseline. New behavior to test? Add a new task with a
+        new id. Old behavior changed? Decide whether the old task is still
+        the spec.</p>
+      </div>
+
+      <h2>Reference: the eval-driven-agent-development workshop</h2>
+
+      <p>
+        The CWC workshop this is modeled on takes a slide-deck-generating
+        agent through six rounds — naive, visual, typography, palette,
+        density, QA-loop — and measures each one. Same shape as ours: a
+        programmatic layer over the .pptx XML, an LLM-as-judge over the
+        rendered slides. The workshop's agent goes from a 36% baseline to
+        a 78% final score, every step justified by a measurement. The
+        principle is the same whether the artifact is a deck, a page, or
+        a SQL query: <em>measure or move on.</em>
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">Your eval score jumps from 67% to 92% after a prompt change you made. A teammate asks "but is the agent actually better?" What's the right thing to do <em>before</em> you celebrate?</div>
+        <div class="options">
+          <button class="opt" data-right="false">Re-run the eval three times to see if the score is stable.</button>
+          <button class="opt" data-right="false">Read the task IDs that flipped from FAIL to PASS.</button>
+          <button class="opt" data-right="false">Eyeball one of the newly-passing outputs to make sure the judge isn't being fooled.</button>
+          <button class="opt" data-right="true">All three. Variance is real (LLM-judge runs aren't deterministic), and "the number went up" can hide a regression on tasks you forgot to weight or a judge that started over-rating something it shouldn't.</button>
+        </div>
+        <div class="explain">
+          The rightmodel workshop's audit checklist makes this explicit:
+          run trials per cell to estimate variance, look at per-task flips
+          rather than just totals, and spot-check the judge by reading a
+          few rationales. A 25-point jump is suspicious until you've
+          actually looked at what changed.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./06-memory.html"><span class="nav-label">← Previous</span><span class="nav-title">06 Memory</span></a>
+        <a href="./08-rightmodel.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">08 Right model</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

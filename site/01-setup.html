@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>01 · Setup — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch01">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 01</span><span class="sep">·</span><span>~20 min</span><span class="sep">·</span><span>setup</span>
+      </div>
+      <h1>Setup</h1>
+      <p class="lead">
+        Three things on your laptop, one secret in a file, one smoke-test
+        command. By the end of this chapter your terminal will be talking to
+        Claude.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Install bun, get an Anthropic API key, copy the example-agent
+        project, run a one-line smoke test, and confirm the response came
+        back. If that works, every other chapter will work.</p>
+      </div>
+
+      <h2>1. Install bun (or skip if you already have Node 22)</h2>
+
+      <p>
+        bun is a fast JavaScript runtime that runs TypeScript files directly
+        — no build step, no transpiler config. We use it because it makes the
+        examples in this tutorial three lines shorter. If you'd rather use
+        Node 22+, every command works with <code>npx tsx</code> instead.
+      </p>
+
+      <p>On macOS or Linux:</p>
+      <pre><code class="lang-bash">curl -fsSL https://bun.sh/install | bash</code></pre>
+
+      <p>On Windows, use WSL and run the same command inside it.</p>
+
+      <p>Then verify:</p>
+      <pre><code class="lang-bash">bun --version
+# 1.x.x or newer</code></pre>
+
+      <div class="callout warn">
+        <strong>If bun is fighting you</strong>
+        <p>Use Node 22+ instead — it works identically. Wherever the tutorial
+        says <code>bun run X.ts</code>, run <code>npx tsx X.ts</code> instead.
+        Get Node from <a href="https://nodejs.org">nodejs.org</a> or
+        <code>brew install node</code>.</p>
+      </div>
+
+      <h2>2. Get an Anthropic API key</h2>
+
+      <p>
+        Go to <a href="https://console.anthropic.com/settings/keys">console.anthropic.com/settings/keys</a>.
+        Sign in (or sign up — there's a free credit tier that covers this
+        tutorial). Click <strong>Create Key</strong>. Copy the key that starts
+        with <code>sk-ant-...</code>.
+      </p>
+
+      <div class="callout gotcha">
+        <strong>The key is shown exactly once</strong>
+        <p>Anthropic only shows your API key at the moment of creation. If
+        you close the page without copying it, you have to make a new one.
+        Paste it somewhere safe right away.</p>
+      </div>
+
+      <h2>3. Set up the project</h2>
+
+      <p>
+        The TypeScript code you'll build alongside this tutorial lives in
+        <code>example-agent/</code> next to the site you're reading right
+        now. From a terminal:
+      </p>
+
+      <pre><code class="lang-bash">cd example-agent
+
+# Install dependencies (one Anthropic SDK, one types package).
+bun install
+
+# Copy the env template and put your key in it.
+cp .env.example .env
+# Open .env in your editor and replace sk-ant-REPLACE_ME with your real key.</code></pre>
+
+      <p>Your <code>.env</code> should now look like:</p>
+
+      <pre data-file=".env"><code class="lang-bash">ANTHROPIC_API_KEY=sk-ant-api03-abc...your_real_key...xyz
+DEFAULT_MODEL=claude-sonnet-4-6</code></pre>
+
+      <h2>4. The smoke test</h2>
+
+      <p>
+        Let's confirm the SDK, the key, and the network all work. Create a
+        file called <code>smoke.ts</code> in <code>example-agent/</code> with
+        this content:
+      </p>
+
+      <pre data-file="smoke.ts"><code class="lang-ts">import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+
+const response = await client.messages.create({
+  model: "claude-haiku-4-5-20251001",  // cheapest model — fine for a smoke test
+  max_tokens: 64,
+  messages: [{ role: "user", content: "Reply with exactly: pong." }],
+});
+
+console.log(response.content);</code></pre>
+
+      <p>Run it:</p>
+
+      <pre><code class="lang-bash">bun run smoke.ts</code></pre>
+
+      <p>You should see something like:</p>
+
+      <div class="expected">[
+  { type: "text", text: "pong." }
+]</div>
+
+      <div class="callout tip">
+        <strong>If you saw "pong" — you're done.</strong>
+        <p>The SDK loaded, your key worked, and Claude responded. Delete
+        <code>smoke.ts</code> and move on. (You won't need it again — the
+        rest of the chapters have their own commands.)</p>
+      </div>
+
+      <h2>If it didn't work</h2>
+
+      <table>
+        <thead><tr><th>Error</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>Could not resolve "@anthropic-ai/sdk"</code></td>
+            <td>You skipped <code>bun install</code> or ran it in the wrong directory.</td>
+            <td><code>cd example-agent && bun install</code></td>
+          </tr>
+          <tr>
+            <td><code>401 authentication_error</code></td>
+            <td>Your <code>.env</code> still has the placeholder, or you pasted the key with quotes.</td>
+            <td>Open <code>.env</code>, no quotes around the key, no trailing space.</td>
+          </tr>
+          <tr>
+            <td><code>ANTHROPIC_API_KEY not set</code></td>
+            <td>Either you didn't <code>cp .env.example .env</code>, or bun isn't picking up the file.</td>
+            <td>Make sure the <code>.env</code> file is in <code>example-agent/</code>, not in the parent directory.</td>
+          </tr>
+          <tr>
+            <td><code>429 rate_limit_error</code></td>
+            <td>You used a key from a workspace with no credits.</td>
+            <td>Add billing at <code>console.anthropic.com</code>, or wait — the free tier resets daily.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>What you have now</h2>
+
+      <p>
+        A working <code>example-agent/</code> directory, a real API key wired
+        in, and a runtime that can call Claude. That's everything the rest
+        of the tutorial needs.
+      </p>
+
+      <p>
+        Take a peek at the project structure before you move on — you'll
+        recognize the names from the chapter list:
+      </p>
+
+      <pre><code class="lang-bash">tree -L 2 example-agent
+example-agent
+├── README.md
+├── package.json
+├── tsconfig.json
+├── .env                    ← your secret
+├── .env.example
+├── src
+│   ├── shared              ← types, client, prompts (used by every chapter)
+│   ├── 02-first-call.ts
+│   ├── 03-tools.ts
+│   ├── 04-skills.ts
+│   ├── 05-decomposition.ts
+│   ├── 06-memory.ts
+│   └── ...
+└── evals
+    ├── dataset.json
+    ├── grader.ts
+    └── run.ts</code></pre>
+
+      <p>
+        Each chapter has a matching source file. You'll read the chapter on
+        this site and run the matching file in the terminal. They reference
+        each other, so keep both open.
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">You ran <code>bun run smoke.ts</code> and got <code>401 authentication_error</code>. The error went away after you fixed your <code>.env</code>. What was almost certainly wrong with it?</div>
+        <div class="options">
+          <button class="opt" data-right="false">The file was named <code>.env.local</code>.</button>
+          <button class="opt" data-right="true">The <code>ANTHROPIC_API_KEY</code> value still said <code>sk-ant-REPLACE_ME</code> or had quote marks around it.</button>
+          <button class="opt" data-right="false">You were using Sonnet instead of Haiku.</button>
+          <button class="opt" data-right="false">You forgot to import <code>dotenv</code>.</button>
+        </div>
+        <div class="explain">
+          bun reads <code>.env</code> automatically; you never have to import
+          a library to load it. A 401 means the key the SDK sent over the
+          wire was syntactically valid but wasn't an actual issued key —
+          which almost always means the placeholder is still there or
+          something extra (like wrapping quotes) is on the line.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./00-what-youll-build.html"><span class="nav-label">← Previous</span><span class="nav-title">00 What you'll build</span></a>
+        <a href="./02-first-call.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">02 First call</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

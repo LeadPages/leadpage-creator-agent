@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>From a Prompt to a Production Agent · CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="index">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">
+        Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a>. One linear path through the 2026 workshop arc, applied to a Leadpage Creator example.
+      </div>
+    </aside>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow">A self-paced tutorial · TypeScript · 10 chapters · ~4 hours end-to-end</div>
+        <h1>From a prompt to a production agent.</h1>
+        <p class="lead">
+          You'll start with a single API call and end with a deployed agent
+          that designs and writes landing pages. Each chapter introduces
+          exactly one new idea, so by the time you finish you understand the
+          paradigms behind real agent products — not because you read about
+          them, but because you built them.
+        </p>
+
+        <div class="progress-bar"><div class="fill" style="width:0%"></div></div>
+        <div class="progress-label">0 / 11 chapters complete · 0%</div>
+
+        <div style="margin-top: 20px; display:flex; gap:12px; flex-wrap:wrap; font-family: var(--sans); font-size: 14px;">
+          <a href="./00-what-youll-build.html" style="background: var(--accent); color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">Start Chapter 00 →</a>
+          <button id="reset-progress" style="background: transparent; border: 1px solid var(--rule); padding: 10px 16px; border-radius: 6px; cursor: pointer; font-family: var(--sans); font-size: 14px; color: var(--ink-muted);">Reset progress</button>
+        </div>
+      </section>
+
+      <h2>What you'll build</h2>
+      <p>
+        A <strong>Leadpage Creator</strong> — an agent that takes a one-line
+        brief like <em>"vegan meal kits for busy parents"</em> and produces a
+        complete, polished landing page. By the end it will:
+      </p>
+
+      <ul>
+        <li><strong>Pick its own colors</strong> via a tool that fetches a brand's palette from a URL.</li>
+        <li><strong>Load instructions on demand</strong> — a copywriting skill and a hero-layout skill that get pulled into context only when needed.</li>
+        <li><strong>Delegate</strong> to a copywriter subagent and a designer subagent, each tuned for its job.</li>
+        <li><strong>Remember your brand</strong> across sessions so you don't repeat yourself.</li>
+        <li><strong>Be measured, not vibed</strong> — every change runs against an eval set so you can see what improved.</li>
+        <li><strong>Stream</strong>, retry, and call out to MCP servers (like HTMLPub) so it can publish, not just print.</li>
+        <li><strong>Ship</strong> as a Claude Managed Agent that anyone on your team can call.</li>
+      </ul>
+
+      <h2>How the tutorial works</h2>
+
+      <p>
+        Each chapter is one focused lesson with a clear goal, a walkthrough, a
+        code snippet you can run, an "expected output" block, and a one-question
+        checkpoint quiz. Getting the quiz right marks the chapter complete in
+        the sidebar — your progress is saved in <code>localStorage</code> so
+        you can come back later.
+      </p>
+
+      <p>
+        Alongside this site is a TypeScript project at <code>../example-agent</code>.
+        Each chapter has a matching source file there (e.g. Chapter 03 → <code>src/03-tools.ts</code>),
+        and the chapter tells you exactly when to run it. You're meant to keep
+        a terminal open and switch between them.
+      </p>
+
+      <div class="callout tip">
+        <strong>How to use the chapter cards</strong>
+        <p>Click any chapter to jump in. They build on each other, so reading
+        them in order is best — but you can revisit any chapter at any time.</p>
+      </div>
+
+      <h2>The 11 chapters</h2>
+
+      <div class="chapter-grid">
+        <a class="chapter-card" data-slug="ch00" href="./00-what-youll-build.html">
+          <span class="num">CH 00</span>
+          <span class="title">What you'll build</span>
+          <span class="desc">A tour of the finished Leadpage Creator and a map of the chapters ahead. The minimum vocab to follow along.</span>
+          <span class="ws">prereq · 15 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch01" href="./01-setup.html">
+          <span class="num">CH 01</span>
+          <span class="title">Setup</span>
+          <span class="desc">Install bun, get an Anthropic API key, scaffold the TypeScript project, run a smoke-test call.</span>
+          <span class="ws">setup · 20 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch02" href="./02-first-call.html">
+          <span class="num">CH 02</span>
+          <span class="title">First call</span>
+          <span class="desc">One <code>messages.create</code> call that takes a topic and returns a full HTML landing page. The naive baseline.</span>
+          <span class="ws">api basics · 15 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch03" href="./03-tools.html">
+          <span class="num">CH 03</span>
+          <span class="title">Tools</span>
+          <span class="desc">Give the agent two functions it can call: <code>fetch_brand_colors</code> and <code>save_page</code>. Run the agent loop.</span>
+          <span class="ws">tools · 25 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch04" href="./04-skills.html">
+          <span class="num">CH 04</span>
+          <span class="title">Skills</span>
+          <span class="desc">Instructions the agent loads on demand. Write a <code>conversion-copy</code> skill and a <code>hero-patterns</code> skill.</span>
+          <span class="ws">agent-decomposition · 25 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch05" href="./05-decomposition.html">
+          <span class="num">CH 05</span>
+          <span class="title">Decomposition</span>
+          <span class="desc">Tool vs Skill vs Subagent. Split the monolith into an orchestrator with copywriter and designer subagents.</span>
+          <span class="ws">agent-decomposition · 30 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch06" href="./06-memory.html">
+          <span class="num">CH 06</span>
+          <span class="title">Memory</span>
+          <span class="desc">Persist a brand kit so the agent knows your colors and voice from one session to the next.</span>
+          <span class="ws">agents-that-remember · 25 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch07" href="./07-evals.html">
+          <span class="num">CH 07</span>
+          <span class="title">Evals</span>
+          <span class="desc">A six-task test set and a two-layer grader. Measure every change. Stop vibing.</span>
+          <span class="ws">eval-driven-development · 30 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch08" href="./08-rightmodel.html">
+          <span class="num">CH 08</span>
+          <span class="title">Right model</span>
+          <span class="desc">Sweep Haiku × Sonnet × Opus across the eval set. Find quality-per-dollar per subagent.</span>
+          <span class="ws">rightmodel · 20 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch09" href="./09-production.html">
+          <span class="num">CH 09</span>
+          <span class="title">Production</span>
+          <span class="desc">Streaming, retries, gated tool confirmations, MCP integration with HTMLPub.</span>
+          <span class="ws">production-ready · 25 min</span>
+        </a>
+        <a class="chapter-card" data-slug="ch10" href="./10-managed-agent.html">
+          <span class="num">CH 10</span>
+          <span class="title">Ship it</span>
+          <span class="desc">Deploy as a Claude Managed Agent. Agent → Environment → Session → Events.</span>
+          <span class="ws">ship-managed-agent · 25 min</span>
+        </a>
+      </div>
+
+      <h2>Prereqs</h2>
+      <table>
+        <thead><tr><th>You'll need</th><th>Why</th><th>If you don't have it</th></tr></thead>
+        <tbody>
+          <tr><td><strong>A laptop</strong></td><td>Mac or Linux work first-class; Windows works via WSL.</td><td>—</td></tr>
+          <tr><td><strong>Some programming familiarity</strong></td><td>You should be comfortable reading TypeScript. You don't need to be an expert.</td><td>Try a JS intro first.</td></tr>
+          <tr><td><strong>An Anthropic API key</strong></td><td>The agent calls Claude. Free credits are enough for this tutorial.</td><td>Chapter 01 walks you through getting one.</td></tr>
+          <tr><td><strong>bun (or Node 22)</strong></td><td>Runs the TypeScript directly with no build step.</td><td>Chapter 01 installs it for you.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>What this isn't</h2>
+      <p>
+        This is not an API reference, and it's not a survey of every Claude
+        feature. It's a guided path that picks <em>one</em> defensible way to
+        build a real agent and walks you down it. When a chapter mentions a
+        feature you could swap in (the Agent SDK, MCP, Vault, sub-agents),
+        we'll point at the original CWC workshop where that path is taught,
+        but the tutorial itself stays on the rails.
+      </p>
+
+      <div class="callout goal">
+        <strong>Ready?</strong>
+        <p>Start with <a href="./00-what-youll-build.html">Chapter 00 — What you'll build</a>. It's a 15-minute read and ends with the only decision you'll need to make before opening a terminal.</p>
+      </div>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

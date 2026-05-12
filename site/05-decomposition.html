@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>05 · Decomposition — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch05">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 05</span><span class="sep">·</span><span>~30 min</span><span class="sep">·</span><span>workshop: agent-decomposition</span>
+      </div>
+      <h1>Decomposition</h1>
+      <p class="lead">
+        Three specialists with their own focused contexts beat one generalist
+        trying to hold the whole job. We split the Leadpage agent into a
+        copywriter, a designer, and an assembler, with an orchestrator that
+        routes between them.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Replace the single agent with an orchestrator + three subagents.
+        Each subagent has its own narrowed system prompt, its own context
+        window, and its own output shape. Understand when to add a subagent
+        — and when adding one is the wrong move.</p>
+      </div>
+
+      <h2>The before/after</h2>
+
+      <div class="diagram">
+        <pre>BEFORE                              AFTER
+
+┌─────────────────┐                ┌──────────────────┐
+│                 │                │   orchestrator   │
+│  one agent      │                │   (your code)    │
+│                 │                └────────┬─────────┘
+│  - read brief   │                         │
+│  - pick copy    │                ┌────────┼────────┐
+│  - pick design  │                ▼        ▼        ▼
+│  - emit HTML    │           ┌─────┐  ┌─────┐  ┌──────┐
+│                 │           │ copy│  │ dsgn│  │ asm  │
+└─────────────────┘           └─────┘  └─────┘  └──────┘
+                              JSON     JSON      HTML</pre>
+      </div>
+
+      <p>
+        The "after" isn't <em>obviously</em> better — it's three calls
+        instead of one, which means three times the round-trips. So why
+        decompose?
+      </p>
+
+      <ul>
+        <li><strong>Each subagent has one job</strong>, with a system prompt that's about that job only. The copywriter never gets distracted by layout decisions. The designer never has to think about CTA verbs.</li>
+        <li><strong>Each subagent's context is small and focused.</strong> The copywriter doesn't see hero patterns; the designer doesn't see the whole copywriting reference.</li>
+        <li><strong>Each subagent can be a different model.</strong> Copywriting is a Haiku-class task. Layout might be a Sonnet task. (Chapter 08 will measure this.)</li>
+        <li><strong>Failures are local.</strong> If the designer returns invalid JSON, you retry just the designer. The copywriter's good output isn't thrown away.</li>
+        <li><strong>Each subagent's output is structured</strong>, so the next stage doesn't have to parse free-form text.</li>
+      </ul>
+
+      <h2>The decision framework, properly</h2>
+
+      <p>
+        This is the chart from the StockPilot workshop — the canonical rubric
+        for "is this thing a tool, a skill, or a subagent?":
+      </p>
+
+      <table>
+        <thead><tr><th>Construct</th><th>Cost</th><th>Use when</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Tool</strong></td>
+            <td>cheap, stateless</td>
+            <td>You have data the model can't have, or a side effect only your code can perform. Output is small, structured.</td>
+          </tr>
+          <tr>
+            <td><strong>Skill</strong></td>
+            <td>cheap, doc-shaped</td>
+            <td>You have a body of rules / patterns / examples that's too big for the system prompt and not relevant on every request.</td>
+          </tr>
+          <tr>
+            <td><strong>Subagent</strong></td>
+            <td>another full LLM call</td>
+            <td>The work has its own goal, its own context, and its own decision space — and the result of the subagent is itself a small artifact (JSON, paragraphs, a number range), not a one-token answer.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout warn">
+        <strong>The anti-pattern: the one-number subagent</strong>
+        <p>If your subagent reads the input and returns "yes" or "no" or
+        "47", it should be a tool — or a turn of the parent agent's own
+        loop. Subagents are expensive because they spin up a fresh context;
+        if the answer is a token, that's a price you didn't have to pay.</p>
+      </div>
+
+      <h2>How a subagent works (when you're not on the managed-agent platform)</h2>
+
+      <p>
+        On <a href="https://platform.claude.com/docs/en/managed-agents/overview">Claude Managed Agents</a>,
+        sub-agents are a first-class platform feature: they have their own
+        threads, their own memory, their own observability. We get to that
+        in Chapter 10. For now we're still in plain SDK land, and a
+        "subagent" is just <strong>a separate <code>messages.create</code>
+        call with a focused system prompt</strong> — managed by your code,
+        invoked from your orchestrator function.
+      </p>
+
+      <pre data-file="src/05-decomposition.ts"><code class="lang-ts">async function copywriter(brief: string): Promise<Copy> {
+  const rules = await readFile("src/skills/conversion-copy.md", "utf8");
+
+  const response = await client.messages.create({
+    model: DEFAULT_MODEL,
+    max_tokens: 1024,
+    system: `
+You are a conversion copywriter. Return ONLY a JSON object with fields:
+headline, subhead, body (array of 2 strings), cta.
+
+Apply these rules strictly:
+
+${rules}
+`.trim(),
+    messages: [{ role: "user", content: `Brief: ${brief}\n\nReturn the JSON.` }],
+  });
+
+  return extractJson<Copy>(firstText(response.content));
+}</code></pre>
+
+      <p>Three things to notice:</p>
+
+      <ol>
+        <li><strong>Structured output as JSON.</strong> The copywriter never returns prose — it returns a JSON object the orchestrator can read. The schema is encoded in the system prompt; in production you'd use the API's response_format or output_schema to enforce it.</li>
+        <li><strong>The skill body is inlined</strong> into the subagent's system prompt, because the copywriter <em>always</em> needs the copywriting rules. There's no need for a <code>load_skill</code> tool here.</li>
+        <li><strong>No agent loop.</strong> This is a one-shot call. The subagent doesn't have tools. Its only job is to produce structured copy.</li>
+      </ol>
+
+      <h2>The orchestrator</h2>
+
+      <pre data-file="src/05-decomposition.ts"><code class="lang-ts">async function orchestrate(brief: string) {
+  const copy   = await copywriter(brief);
+  const design = await designer(brief, copy);
+  const html   = await assembler(copy, design);
+
+  await writeFile("out/05-decomposition.html", html, "utf8");
+}</code></pre>
+
+      <p>
+        That's the whole orchestrator. <em>Three lines</em>. It's just
+        Promise-and-await glue — no LLM call of its own. The orchestrator
+        could be an LLM-driven agent (one that uses an inner loop to choose
+        which subagent to call next), but for this workflow the order is
+        always the same, so making it a model decision would be needless
+        flexibility and a needless API call.
+      </p>
+
+      <div class="callout tip">
+        <strong>Code where you can, model where you must</strong>
+        <p>If the workflow is fixed (copy then design then assemble),
+        hardcode the order. Save the LLM for the parts that are actually
+        decisions. This is the most common over-engineering pattern in
+        agent-land: putting a model in every decision slot, even the ones
+        that don't have decisions.</p>
+      </div>
+
+      <div class="try-it">
+        <h4>Try it</h4>
+        <pre><code class="lang-bash">bun run decompose "vegan meal kits for busy parents"</code></pre>
+        <p>You'll see each subagent's output as it goes:</p>
+        <div class="expected">▸ brief: vegan meal kits for busy parents
+▸ → copywriter
+  headline: "Plant-based dinners that don't ask for thirty minutes you don't have."
+  cta:      "Try your first box"
+▸ → designer
+  palette:  #2f7a4a, #f6f0e4, #1d1b18, #d96e2b, #c5dfd2
+  layout:   split
+▸ → assembler
+
+✓ /…/out/05-decomposition.html</div>
+        <p style="margin-top:10px;">
+          Compare that output side-by-side with <code>out/04-skills.html</code>.
+          The 05 version usually has a cleaner separation between the copy
+          (tight, on-brief) and the design (consistent palette, layout
+          chosen with intent).
+        </p>
+      </div>
+
+      <h2>Three things to look for when this is going well</h2>
+
+      <ol>
+        <li><strong>Each subagent's output is small.</strong> Copy is ~150 tokens, design is ~80, assembler emits the HTML. If a subagent's output starts looking like prose + answer, it's drifting — tighten the prompt.</li>
+        <li><strong>The orchestrator never wears two hats.</strong> If you find your orchestrator function doing string parsing or business logic on what came back, that work probably belongs in one of the subagents.</li>
+        <li><strong>You can swap one subagent's model.</strong> Try setting the copywriter to Haiku and the designer to Sonnet. If the page quality holds, congratulations — you just halved that subagent's cost. Chapter 08 systematizes this.</li>
+      </ol>
+
+      <h2>When NOT to decompose</h2>
+
+      <p>
+        Decomposition isn't free. Each subagent is another API round-trip
+        and another chance for things to fail. Don't decompose when:
+      </p>
+
+      <ul>
+        <li>The whole task fits comfortably in one prompt and one response (~500 tokens, no branching). A "rephrase this sentence" job doesn't want three agents.</li>
+        <li>The subagents would need to share a lot of context. If each subagent has to be told the whole story, decomposition just made everything slower.</li>
+        <li>You can't articulate <em>what each subagent decides</em>. If you can't write down "the copywriter picks the headline; the designer picks the palette" cleanly, the boundaries are wrong.</li>
+      </ul>
+
+      <h2>Reference to the workshop</h2>
+
+      <p>
+        The StockPilot workshop (<code>agent-decomposition/</code> in the
+        CWC repo) does this exact pattern at production scale: takes an
+        inventory agent with a 402-line monolith prompt and three hardcoded
+        subagents, decomposes it into skills + code execution + one
+        well-placed subagent, runs evals after every change, and lands at
+        92% pass rate (up from 71%). The takeaway lines from that workshop
+        apply directly to ours: <em>"The knowledge didn't shrink — 402
+        prompt lines became 400 skill lines. The difference is when they're
+        in context."</em>
+      </p>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">A teammate suggests adding a fourth subagent: <code>cta_optimizer</code> that takes the headline and returns the "best" CTA verb (one of: "Try", "Get", "Start", "See"). Which thing is it actually?</div>
+        <div class="options">
+          <button class="opt" data-right="false">A subagent — it has its own focused decision.</button>
+          <button class="opt" data-right="false">A skill — the rules for picking the verb can be looked up.</button>
+          <button class="opt" data-right="true">Either a one-line rule inside the copywriter, or a tool that the copywriter calls. Definitely not a subagent — the output is one token from a fixed enum.</button>
+          <button class="opt" data-right="false">A new orchestrator.</button>
+        </div>
+        <div class="explain">
+          The smell test from the StockPilot workshop: "Subagent's output
+          is one number? → it shouldn't be a subagent." Here the output is
+          one of four enum values — even smaller. The cost of spinning up a
+          subagent is the same as a full LLM call, but the value is a
+          string. That's an anti-pattern. Either fold it into the copywriter
+          (it's already deciding on copy), or expose it as a deterministic
+          tool with a lookup table.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./04-skills.html"><span class="nav-label">← Previous</span><span class="nav-title">04 Skills</span></a>
+        <a href="./06-memory.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">06 Memory</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>

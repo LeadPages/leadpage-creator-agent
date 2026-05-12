@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>09 · Production — CWC 2026 Tutorial</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body data-slug="ch09">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <a href="./index.html">From a Prompt to a Production Agent</a>
+        <span class="sub">CWC 2026 · Leadpage Creator</span>
+      </div>
+      <div class="toc-header">Tutorial</div>
+      <ul class="toc">
+        <li data-slug="ch00"><a href="./00-what-youll-build.html" data-slug="ch00"><span class="num">00</span><span>What you'll build</span><span class="dot"></span></a></li>
+        <li data-slug="ch01"><a href="./01-setup.html" data-slug="ch01"><span class="num">01</span><span>Setup</span><span class="dot"></span></a></li>
+        <li data-slug="ch02"><a href="./02-first-call.html" data-slug="ch02"><span class="num">02</span><span>First call</span><span class="dot"></span></a></li>
+        <li data-slug="ch03"><a href="./03-tools.html" data-slug="ch03"><span class="num">03</span><span>Tools</span><span class="dot"></span></a></li>
+        <li data-slug="ch04"><a href="./04-skills.html" data-slug="ch04"><span class="num">04</span><span>Skills</span><span class="dot"></span></a></li>
+        <li data-slug="ch05"><a href="./05-decomposition.html" data-slug="ch05"><span class="num">05</span><span>Decomposition</span><span class="dot"></span></a></li>
+        <li data-slug="ch06"><a href="./06-memory.html" data-slug="ch06"><span class="num">06</span><span>Memory</span><span class="dot"></span></a></li>
+        <li data-slug="ch07"><a href="./07-evals.html" data-slug="ch07"><span class="num">07</span><span>Evals</span><span class="dot"></span></a></li>
+        <li data-slug="ch08"><a href="./08-rightmodel.html" data-slug="ch08"><span class="num">08</span><span>Right model</span><span class="dot"></span></a></li>
+        <li data-slug="ch09"><a href="./09-production.html" data-slug="ch09"><span class="num">09</span><span>Production</span><span class="dot"></span></a></li>
+        <li data-slug="ch10"><a href="./10-managed-agent.html" data-slug="ch10"><span class="num">10</span><span>Ship it</span><span class="dot"></span></a></li>
+      </ul>
+      <div class="footer-note">Source: <a href="https://github.com/anthropics/cwc-workshops">anthropics/cwc-workshops</a></div>
+    </aside>
+
+    <main>
+      <div class="chapter-meta">
+        <span class="num">CHAPTER 09</span><span class="sep">·</span><span>~25 min</span><span class="sep">·</span><span>workshop: production-ready-agent</span>
+      </div>
+      <h1>Production</h1>
+      <p class="lead">
+        Five things change between "agent that works on my laptop" and
+        "agent other people rely on": you stream output, you retry transient
+        errors, you gate destructive tool calls, you log everything, and you
+        let it reach external systems via MCP.
+      </p>
+
+      <div class="callout goal">
+        <strong>Goal</strong>
+        <p>Take the v05 agent and add the operational layer. Stream tokens
+        for live progress, retry on rate-limit/5xx, gate the
+        <code>publish_page</code> tool behind explicit user approval, write
+        a structured event log, and outline how to swap a local tool for an
+        MCP-backed one.</p>
+      </div>
+
+      <h2>1. Streaming — UI feels alive</h2>
+
+      <p>
+        A landing page takes 5-15 seconds to generate. Without streaming,
+        the user sees a spinner. With streaming, they see text appearing.
+        The difference between "is it broken?" and "this feels fast" is
+        about ten lines of code.
+      </p>
+
+      <pre data-file="src/09-production.ts"><code class="lang-ts">const stream = client.messages.stream({
+  model: DEFAULT_MODEL,
+  max_tokens: 4096,
+  system,
+  tools: TOOLS,
+  messages,
+});
+
+stream.on("text", (delta: string) => {
+  process.stdout.write(delta);   // live text → terminal
+});
+
+stream.on("inputJson", (delta: string) => {
+  // tool inputs come in too — for HTML, this is a stream of code
+});
+
+const finalMessage = await stream.finalMessage();
+// finalMessage.content, .stop_reason, .usage — same as messages.create</code></pre>
+
+      <p>
+        In a web app, you'd push these events through SSE or WebSockets to
+        the browser. The shape is the same: render the deltas as they
+        arrive; collapse the final message into your conversation log when
+        the stream ends.
+      </p>
+
+      <h2>2. Retry — graceful under rate limit</h2>
+
+      <p>
+        At any meaningful traffic, you'll hit a 429 (rate limit), a 503
+        (overloaded), or a transient network error. Production agents retry
+        these automatically. Don't retry 4xx errors that aren't 429 — those
+        are bugs.
+      </p>
+
+      <pre data-file="src/09-production.ts"><code class="lang-ts">async function withRetry<T>(label: string, fn: () => Promise<T>, max = 4): Promise<T> {
+  let lastErr;
+  for (let attempt = 1; attempt <= max; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const e = err as { status?: number; message?: string };
+      const retryable =
+        e.status === 429 ||
+        (e.status ?? 0) >= 500 ||
+        /ECONNRESET|ETIMEDOUT|fetch failed/i.test(e.message ?? "");
+      if (!retryable || attempt === max) throw err;
+
+      const wait = 250 * Math.pow(2, attempt - 1);   // 250, 500, 1000, 2000
+      await new Promise(r => setTimeout(r, wait));
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}</code></pre>
+
+      <div class="callout warn">
+        <strong>Idempotency matters</strong>
+        <p>Wrapping a <code>messages.create</code> in retry is safe — they're
+        idempotent from your side. Wrapping a <code>publish_page</code> in
+        retry might publish the same page twice. For non-idempotent tools,
+        use the Anthropic SDK's request-level <code>x-idempotency-key</code>
+        header or your own dedup logic.</p>
+      </div>
+
+      <h2>3. Gated tools — the user has to approve</h2>
+
+      <p>
+        Some tools shouldn't fire without explicit human approval —
+        publishing a page, sending an email, charging a card. Production
+        agents put a gate in front of these tools that pauses the loop and
+        asks the user.
+      </p>
+
+      <p>
+        In a CLI this is a <code>readline</code> prompt. In a web app, it's
+        a button. In Claude Managed Agents, the mechanism is a first-class
+        event: <code>user.tool_confirmation</code>. The agent emits a
+        <code>tool_use</code> with a <code>confirmation_required: true</code>
+        flag, your app receives the event, the user clicks yes/no, and you
+        send back the confirmation event. The agent's loop resumes from
+        there.
+      </p>
+
+      <pre data-file="src/09-production.ts"><code class="lang-ts">if (block.name === "publish_page") {
+  const ok = await gateConfirm(block.name, block.input);
+  if (!ok) {
+    results.push({
+      type: "tool_result",
+      tool_use_id: block.id,
+      content: "User declined to publish. Don't try again unless asked.",
+      is_error: false,
+    });
+    continue;
+  }
+}
+// otherwise → run the tool</code></pre>
+
+      <h2>4. Observability — write down what happened</h2>
+
+      <p>
+        When the agent does something surprising, you need a record. The
+        simplest version is structured JSON written to disk:
+      </p>
+
+      <pre data-file="src/09-production.ts"><code class="lang-ts">events.push({ ts: Date.now(), kind: "model_turn",  stop_reason, usage });
+events.push({ ts: Date.now(), kind: "gate",        tool, approved });
+events.push({ ts: Date.now(), kind: "tool_ok",     tool });
+events.push({ ts: Date.now(), kind: "tool_err",    tool, message });
+
+await writeFile("out/09-trace.json", JSON.stringify(events, null, 2));</code></pre>
+
+      <p>
+        In a real deployment this lands in your observability stack — a
+        log shipper, a database, Sentry, an analytics warehouse, whatever
+        you use elsewhere. The Claude Managed Agents console gives you the
+        full event stream for every session by default — every tool call,
+        every Bash command, every skill file the agent loaded. That's the
+        ceiling for debugging an agent. The trace.json above is the floor.
+      </p>
+
+      <h2>5. MCP — calling out to real systems</h2>
+
+      <p>
+        Everything we built so far runs locally. To publish to a real
+        landing-page host, you'd swap the mocked <code>publish_page</code>
+        for a call to <a href="https://htmlpub.com">HTMLPub</a>'s MCP server.
+        The agent doesn't have to change at all — only the tool implementation.
+      </p>
+
+      <p>
+        MCP (Model Context Protocol) is the standard for hooking agents up
+        to external systems. The HTMLPub MCP server exposes tools like
+        <code>create_page</code>, <code>upload_asset</code>, <code>list_sites</code> —
+        the same things you'd call from a script. The Claude Managed Agents
+        platform lets you attach MCP servers directly to an agent's
+        configuration; the agent gets those tools the same way it gets your
+        in-process ones.
+      </p>
+
+      <pre><code class="lang-yaml"># In your agent config (Chapter 10):
+mcp_servers:
+  - url: https://htmlpub.com/mcp
+    auth_vault_id: vault_...          # OAuth token held server-side</code></pre>
+
+      <div class="callout tip">
+        <strong>The Deal Desk pattern</strong>
+        <p>The production-ready-agent workshop builds a similar architecture
+        for M&amp;A diligence: a coordinator agent that fans out to four
+        parallel research sub-agents, reads from a memory store, reaches
+        Linear over MCP, holds the user's Linear token in Vault, and emits
+        a streaming UI of every event. Every primitive in that stack is
+        accessible from the SDK; the managed-agent platform mostly removes
+        the infrastructure you'd otherwise build.</p>
+      </div>
+
+      <h2>The production checklist</h2>
+
+      <table>
+        <thead><tr><th>Concern</th><th>Tutorial answer</th><th>Production answer</th></tr></thead>
+        <tbody>
+          <tr><td>Latency feels slow</td><td>—</td><td>Streaming via SSE / WebSockets</td></tr>
+          <tr><td>Rate limits</td><td>throws</td><td>retry with exponential backoff (1, 2, 4, 8s)</td></tr>
+          <tr><td>Destructive actions</td><td>auto-runs</td><td>gated via <code>tool_confirmation</code></td></tr>
+          <tr><td>Logging</td><td><code>console.log</code></td><td>structured events → your obs stack</td></tr>
+          <tr><td>External systems</td><td>mocked tools</td><td>MCP servers + Vault for secrets</td></tr>
+          <tr><td>Conversation persistence</td><td>in-memory array</td><td>DB-backed sessions; resume on reconnect</td></tr>
+          <tr><td>Cost runaway</td><td>—</td><td>per-session token cap; alert on N× baseline</td></tr>
+          <tr><td>Bad output detection</td><td>none</td><td>run the grader in the request path on the final output; on fail, retry once with the rationale as feedback</td></tr>
+        </tbody>
+      </table>
+
+      <div class="try-it">
+        <h4>Try it</h4>
+        <pre><code class="lang-bash">bun run stream "vegan meal kits for busy parents"</code></pre>
+        <p>You'll see HTML stream live to the terminal, then a confirmation
+        prompt before publish:</p>
+        <div class="expected">  &lt;!doctype html&gt;
+  &lt;html lang="en"&gt;
+  &lt;head&gt;
+    &lt;meta charset="utf-8"&gt;
+    …
+
+  GATE: agent wants to call publish_page({"title":"FreshLeaf"…})
+        approve? [y/N] _</div>
+        <p style="margin-top:10px;">Try answering "n" — the agent will accept
+        the decline and end. Try "y" — you'll get a (mocked) public URL.</p>
+      </div>
+
+      <div class="quiz">
+        <span class="q-label">Checkpoint</span>
+        <div class="q-text">Your <code>publish_page</code> tool takes ~3s to return on a good day, but sometimes the upstream API is slow and it returns after 30s. You wrap it in <code>withRetry</code> with 4 attempts. What's wrong with that?</div>
+        <div class="options">
+          <button class="opt" data-right="false">Nothing — retries are always safe.</button>
+          <button class="opt" data-right="true">Publish is non-idempotent: a retry can produce two live pages with the same content, racing for the URL slug. You need a per-call idempotency key (or, equivalently, dedupe by content hash on the server) before <em>any</em> publish-like tool gets a retry wrapper.</button>
+          <button class="opt" data-right="false">Retries should never use exponential backoff for HTTP calls — just retry immediately.</button>
+          <button class="opt" data-right="false">The agent might call <code>publish_page</code> on every turn if you retry.</button>
+        </div>
+        <div class="explain">
+          The rule of thumb: retry the <code>messages.create</code> call all
+          you want; retry tools only if you've reasoned about idempotency.
+          A retry of <code>publish_page</code> after a slow-but-successful
+          first attempt is a duplicate publish that bypasses the user's
+          gate. The Anthropic SDK supports <code>x-idempotency-key</code>
+          headers; many MCP-exposed tools accept an explicit
+          <code>idempotency_key</code> input.
+        </div>
+      </div>
+
+      <nav class="nav-bottom">
+        <a href="./08-rightmodel.html"><span class="nav-label">← Previous</span><span class="nav-title">08 Right model</span></a>
+        <a href="./10-managed-agent.html" class="next"><span class="nav-label">Next →</span><span class="nav-title">10 Ship it</span></a>
+      </nav>
+    </main>
+  </div>
+  <script src="./assets/tutorial.js"></script>
+</body>
+</html>
