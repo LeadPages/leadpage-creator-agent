@@ -119,16 +119,25 @@ You design and write landing pages.
 
 You have two tools:
 - load_skill(name): pulls a chunk of instructions into context. Skills you can load are
-  listed in the tool description. Load them when relevant — don't load everything up front.
+  listed in the tool description. Load only the skills the brief actually needs.
 - save_page(filename, html): writes the final document and stops the loop.
 
-For every brief, follow this routine:
-1. Decide which skills are relevant to this brief.
-2. Load them with load_skill (call once per skill, before generating).
+For every brief:
+1. Decide which skills (if any) the brief actually needs. Be selective:
+   - "Coming-soon page, logo + email field" → load NOTHING. There's no hero
+     to pattern-match and no value-prop copy to write. Just generate.
+   - "Pricing page, three tiers, no marketing fluff" → load NOTHING. The
+     structure is dictated; no skills add value.
+   - A standard product landing page → load both skills.
+   - A copy-heavy page with no obvious hero → just conversion-copy.
+   - A visual product where you need to pick a hero layout → just hero-patterns.
+2. If you decided to load skills, call load_skill once per skill, before generating.
 3. Generate the complete HTML.
-4. Call save_page exactly once with the final document.
+4. Call save_page exactly once with the final document. Keep the HTML under
+   150 lines, inline CSS, no external assets.
 
-The HTML must be a complete <!doctype html> page with inline CSS, no external assets.
+Loading a skill you don't need wastes tokens and slows the response. Default
+to fewer skills, not more.
 `.trim();
 
 // --- Loop --------------------------------------------------------------------
@@ -158,15 +167,20 @@ async function main() {
 
     if (response.stop_reason !== "tool_use") break;
 
+    // Print one turn header, then list its tool calls underneath. The model
+    // can request multiple tools in one turn (parallel tool use); the indent
+    // makes that visible.
+    console.log(`\nturn ${turn}`);
+
     const tool_results: Anthropic.Messages.ToolResultBlockParam[] = [];
     for (const block of response.content) {
       if (block.type !== "tool_use") continue;
       if (block.name === "load_skill") {
         const skillName = (block.input as { name: string }).name;
         loadedSkills.push(skillName);
-        console.log(`  turn ${turn} → load_skill(${skillName})`);
+        console.log(`  → load_skill(${skillName})`);
       } else {
-        console.log(`  turn ${turn} → ${block.name}`);
+        console.log(`  → ${block.name}`);
       }
       const result = await runTool(block.name, block.input);
       if (block.name === "save_page") savedPath = (result as { path: string }).path;

@@ -154,19 +154,32 @@ For every brief, follow this routine:
         <h4>Try it</h4>
         <pre><code class="lang-bash">bun run skills "vegan meal kits for busy parents"</code></pre>
         <p>The terminal will show which skills the agent decided to load:</p>
-        <div class="expected">  turn 1 → load_skill(conversion-copy)
-  turn 2 → load_skill(hero-patterns)
-  turn 3 → save_page
+        <div class="expected">turn 1
+  → load_skill(hero-patterns)
+  → load_skill(conversion-copy)
+turn 2
+  → save_page
 
-turns: 3, skills loaded: conversion-copy, hero-patterns
+turns: 2, skills loaded: hero-patterns, conversion-copy
 ✓ saved to /…/out/vegan-meal-kits.html</div>
         <p style="margin-top:10px;">
-          Run it again with a topic where one skill clearly shouldn't matter:
+          Notice the model batched both <code>load_skill</code> calls into a
+          single turn — that's parallel tool use. Faster than asking for one,
+          waiting, asking for the next.
         </p>
+        <p>Now run it with a brief where neither skill clearly applies:</p>
         <pre><code class="lang-bash">bun run skills "a flat HTML coming-soon page, just a logo and an email field"</code></pre>
-        <p>You'll probably see the agent skip <code>hero-patterns</code> —
-        because the page doesn't have a hero. That's the agent <em>using</em>
-        the description text to decide.</p>
+        <p>Expected:</p>
+        <div class="expected">turn 1
+  → save_page
+
+turns: 1, skills loaded: (none)
+✓ saved to /…/out/coming-soon.html</div>
+        <p style="margin-top:10px;">No skills loaded — the agent decided
+        neither was relevant for a one-field email-capture page. That's the
+        agent <em>using</em> the skill descriptions (and the prompt's
+        explicit examples) to decide, instead of always loading
+        everything.</p>
       </div>
 
       <h2>When to use a skill vs a tool vs a longer system prompt</h2>
