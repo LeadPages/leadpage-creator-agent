@@ -85,7 +85,7 @@
       <h2>The decision framework, properly</h2>
 
       <p>
-        This is the chart from the StockPilot workshop — the canonical rubric
+        This is the chart from the <a href="https://github.com/anthropics/cwc-workshops/tree/main/agent-decomposition">StockPilot workshop</a> — the canonical rubric
         for "is this thing a tool, a skill, or a subagent?":
       </p>
 
@@ -232,8 +232,9 @@ ${rules}
       <h2>Reference to the workshop</h2>
 
       <p>
-        The StockPilot workshop (<code>agent-decomposition/</code> in the
-        CWC repo) does this exact pattern at production scale: takes an
+        The <a href="https://github.com/anthropics/cwc-workshops/tree/main/agent-decomposition">StockPilot workshop</a>
+        (<code>agent-decomposition/</code> in the CWC repo) does this exact
+        pattern at production scale: takes an
         inventory agent with a 402-line monolith prompt and three hardcoded
         subagents, decomposes it into skills + code execution + one
         well-placed subagent, runs evals after every change, and lands at
@@ -253,7 +254,7 @@ ${rules}
           <button class="opt" data-right="false">A new orchestrator.</button>
         </div>
         <div class="explain">
-          The smell test from the StockPilot workshop: "Subagent's output
+          The smell test from the <a href="https://github.com/anthropics/cwc-workshops/tree/main/agent-decomposition">StockPilot workshop</a>: "Subagent's output
           is one number? → it shouldn't be a subagent." Here the output is
           one of four enum values — even smaller. The cost of spinning up a
           subagent is the same as a full LLM call, but the value is a
