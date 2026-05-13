@@ -102,7 +102,7 @@ ${stripped}
 async function assembler(copy: Copy, design: Design): Promise<string> {
   const response = await client.messages.create({
     model: DEFAULT_MODEL,
-    max_tokens: 4096,
+    max_tokens: 16384,
     system: `
 You assemble landing pages. Given finalized copy and design tokens, output a
 complete <!doctype html> document with inline CSS and no external assets.

@@ -53,7 +53,7 @@ async function callSubagent(model: ModelName, system: string, user: string): Pro
   const t0 = Date.now();
   const r = await client.messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: 16384,
     system,
     messages: [{ role: "user", content: user }],
   });

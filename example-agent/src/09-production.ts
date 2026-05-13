@@ -117,7 +117,7 @@ async function streamOneTurn(
   return withRetry("stream", async () => {
     const stream = client.messages.stream({
       model: DEFAULT_MODEL,
-      max_tokens: 4096,
+      max_tokens: 16384,
       system,
       tools: TOOLS,
       messages,

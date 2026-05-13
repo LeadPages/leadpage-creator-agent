@@ -110,7 +110,10 @@ async function main() {
 
     const response = await client.messages.create({
       model: DEFAULT_MODEL,
-      max_tokens: 4096,
+      // A whole landing page is serialized inside a tool_use block, which
+      // means the HTML counts against output tokens. 16384 is a comfortable
+      // ceiling for a tight page; the prompt also caps page length.
+      max_tokens: 16384,
       system: PROMPT_WITH_TOOLS,
       tools: TOOLS,
       messages,

@@ -148,7 +148,7 @@ async function main() {
     turn += 1;
     const response = await client.messages.create({
       model: DEFAULT_MODEL,
-      max_tokens: 4096,
+      max_tokens: 16384,
       system: SYSTEM,
       tools: TOOLS,
       messages,

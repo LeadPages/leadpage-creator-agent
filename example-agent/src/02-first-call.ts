@@ -21,7 +21,7 @@ async function main() {
 
   const response = await client.messages.create({
     model: DEFAULT_MODEL,
-    max_tokens: 4096,
+    max_tokens: 16384,
     system: PROMPT_NAIVE,
     messages: [
       { role: "user", content: `Create a landing page for: ${topic}` },

@@ -30,7 +30,12 @@ one <h1> headline, a subhead, two value-prop paragraphs, and a CTA. Use the
 fetched palette for accents if you called fetch_brand_colors; otherwise pick
 a warm, on-brand palette yourself.
 
-Always finish by calling save_page exactly once.
+Keep the page tight: under 150 lines of HTML, minimal inline CSS, no extra
+sections beyond what's listed above. Brevity matters — the tool call has a
+token budget.
+
+Always finish by calling save_page exactly once. Do not say "now I'll
+build the page" — just call save_page.
 `.trim();
 
 export const PROMPT_ORCHESTRATOR = `
