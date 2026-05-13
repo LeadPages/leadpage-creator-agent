@@ -131,10 +131,10 @@
 
       <pre data-file="evals/grader.ts"><code class="lang-ts">// Programmatic
 export function gradeProgrammatic(task: Task, html: string): ProgrammaticScore {
-  const has_doctype  = /<!doctype html/i.test(html);
-  const h1           = (html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || "";
-  const has_h1       = h1.replace(/<[^>]*>/g, "").trim().length > 0;
-  const cta          = html.match(/<(button|a)[^>]*>([\s\S]*?)<\/\1>/i);
+  const has_doctype  = /&lt;!doctype html/i.test(html);
+  const h1           = (html.match(/&lt;h1[^&gt;]*&gt;([\s\S]*?)&lt;\/h1&gt;/i) || [])[1] || "";
+  const has_h1       = h1.replace(/&lt;[^&gt;]*&gt;/g, "").trim().length > 0;
+  const cta          = html.match(/&lt;(button|a)[^&gt;]*&gt;([\s\S]*?)&lt;\/\1&gt;/i);
   const has_cta      = !!cta;
   const mention_hits = task.must_mention.filter((w) =>
                          html.toLowerCase().includes(w.toLowerCase())).length;
@@ -156,7 +156,7 @@ Return ONLY: {"conversion_quality": N, "brand_fit": N, "layout_appropriate": N,
 `;
 
 export async function gradeWithJudge(task: Task, html: string): Promise<JudgeScore> {
-  const trimmed = html.replace(/<style[\s\S]*?<\/style>/gi, "<style>…</style>").slice(0, 8000);
+  const trimmed = html.replace(/&lt;style[\s\S]*?&lt;\/style&gt;/gi, "&lt;style&gt;…&lt;/style&gt;").slice(0, 8000);
   const response = await client.messages.create({
     model: DEFAULT_MODEL,
     max_tokens: 500,
