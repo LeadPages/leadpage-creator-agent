@@ -333,6 +333,15 @@ pre code {
   font-size: inherit;
 }
 
+.pre-wrap {
+  position: relative;
+  margin: 30px 0 28px;
+  max-width: 100%;
+}
+.pre-wrap pre {
+  margin: 0;
+}
+.pre-wrap .filename,
 pre .filename {
   position: absolute;
   top: -10px;
@@ -345,6 +354,7 @@ pre .filename {
   padding: 2px 8px;
   border: 1px solid var(--rule);
   border-radius: 4px;
+  z-index: 1;
 }
 
 pre .copy {

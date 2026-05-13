@@ -131,14 +131,22 @@
     });
   }
 
-  // Heredoc-style filename label on pre blocks (data-file="path/x.ts" attr)
+  // Heredoc-style filename label on pre blocks (data-file="path/x.ts" attr).
+  // We wrap each pre in a .pre-wrap container so the filename can sit on top
+  // of the pre's border — putting it inside the <pre> gets clipped by the
+  // overflow-x:auto we need for horizontal code scroll.
   function attachFilenames() {
     document.querySelectorAll("pre[data-file]").forEach((pre) => {
-      if (pre.querySelector(".filename")) return;
+      const parent = pre.parentElement;
+      if (parent && parent.classList.contains("pre-wrap")) return;
+      const wrap = document.createElement("div");
+      wrap.className = "pre-wrap";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
       const fn = document.createElement("span");
       fn.className = "filename";
       fn.textContent = pre.dataset.file;
-      pre.appendChild(fn);
+      wrap.appendChild(fn);
     });
   }
 
