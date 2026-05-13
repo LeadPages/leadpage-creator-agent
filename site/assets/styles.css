@@ -41,6 +41,14 @@ html {
   scroll-behavior: smooth;
 }
 
+html, body {
+  /* Lock out accidental horizontal scrolling. Any element that needs to
+     scroll horizontally (code blocks, tables) does its own scrolling
+     inside its own box; the page itself never scrolls sideways. */
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -823,11 +831,8 @@ tbody tr:hover {
     font-size: 12px;
     line-height: 1.55;
     padding: 16px 14px;
-    margin-left: -18px;
-    margin-right: -18px;
-    border-radius: 0;
-    /* Bleed code blocks to the edges of the viewport so there's more reading
-       width and the horizontal scrollbar stays visible on the line below. */
+    /* Stay inside the normal content margin — code blocks aligned with the
+       rest of the page reads cleaner than edge-bleed on a phone. */
   }
   pre .filename { left: 10px; }
   .diagram { padding: 16px 14px; }
