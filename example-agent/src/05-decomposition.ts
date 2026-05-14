@@ -47,7 +47,7 @@ function extractJson<T>(text: string): T {
 
 // --- Subagent: copywriter ----------------------------------------------------
 
-async function copywriter(brief: string): Promise<Copy> {
+async function copywriter(brief: string, primary_goal?: string): Promise<Copy> {
   const rules = await readFile(join(HERE, "skills/conversion-copy.md"), "utf8");
   const stripped = rules.replace(/^---\n[\s\S]*?\n---\n*/, "");
 
@@ -59,11 +59,23 @@ You are a conversion copywriter. Given a brief, return ONLY a JSON object with
 fields: headline (string), subhead (string), body (array of 2 short paragraph
 strings), cta (string).
 
+The CTA string MUST drive the page's primary goal. If a goal is given in
+the user message, the CTA must take the visitor to that specific action.
+Examples: goal "book demo" → "Book a demo"; goal "wishlist" → "Wishlist on
+Steam"; goal "trial signup" → "Start free trial". Never invent a different
+conversion path than the brief asks for.
+
 Apply these rules strictly:
 
 ${stripped}
 `.trim(),
-    messages: [{ role: "user", content: `Brief: ${brief}\n\nReturn the JSON.` }],
+    messages: [{
+      role: "user",
+      content:
+        `Brief: ${brief}\n` +
+        (primary_goal ? `Primary goal: ${primary_goal}\n` : "") +
+        `\nReturn the JSON.`,
+    }],
   });
 
   return extractJson<Copy>(firstText(response.content));
@@ -71,7 +83,7 @@ ${stripped}
 
 // --- Subagent: designer ------------------------------------------------------
 
-async function designer(brief: string, copy: Copy): Promise<Design> {
+async function designer(brief: string, copy: Copy, primary_goal?: string): Promise<Design> {
   const rules = await readFile(join(HERE, "skills/hero-patterns.md"), "utf8");
   const stripped = rules.replace(/^---\n[\s\S]*?\n---\n*/, "");
 
@@ -84,13 +96,21 @@ object with fields: palette (array of 3-5 hex colors, primary first), font
 (a font-stack string), layout (one of: "headline-led", "split", "social-proof",
 "three-column").
 
+Match the layout to the goal: B2B goals like "book demo" usually want
+"social-proof" (visitors need trust signals before clicking); product pages
+with a strong visual want "split"; coming-soon / minimal pages want
+"headline-led".
+
 Apply these hero-pattern rules:
 
 ${stripped}
 `.trim(),
     messages: [{
       role: "user",
-      content: `Brief: ${brief}\n\nCopy:\n${JSON.stringify(copy, null, 2)}\n\nReturn the JSON.`,
+      content:
+        `Brief: ${brief}\n` +
+        (primary_goal ? `Primary goal: ${primary_goal}\n` : "") +
+        `\nCopy:\n${JSON.stringify(copy, null, 2)}\n\nReturn the JSON.`,
     }],
   });
 
@@ -141,15 +161,16 @@ markdown fences.
 
 // --- Orchestrator ------------------------------------------------------------
 
-async function orchestrate(brief: string) {
+async function orchestrate(brief: string, primary_goal?: string) {
   console.log(`▸ brief: ${brief}`);
+  if (primary_goal) console.log(`▸ goal:  ${primary_goal}`);
   console.log(`▸ → copywriter`);
-  const copy = await copywriter(brief);
+  const copy = await copywriter(brief, primary_goal);
   console.log(`  headline: "${copy.headline}"`);
   console.log(`  cta:      "${copy.cta}"`);
 
   console.log(`▸ → designer`);
-  const design = await designer(brief, copy);
+  const design = await designer(brief, copy, primary_goal);
   console.log(`  palette:  ${design.palette.join(", ")}`);
   console.log(`  layout:   ${design.layout}`);
 
@@ -163,9 +184,14 @@ async function orchestrate(brief: string) {
   return { copy, design, path };
 }
 
-const brief = process.argv.slice(2).join(" ").trim() || "vegan meal kits for busy parents";
+// CLI: first arg is the brief, optional --goal flag for primary_goal.
+//   bun run decompose "a SaaS dashboard for accountants like Stripe" --goal "book demo"
+const argv = process.argv.slice(2);
+const goalIdx = argv.indexOf("--goal");
+const primary_goal = goalIdx >= 0 ? argv.splice(goalIdx, 2)[1] : undefined;
+const brief = argv.join(" ").trim() || "vegan meal kits for busy parents";
 
-orchestrate(brief).catch((err) => {
+orchestrate(brief, primary_goal).catch((err) => {
   console.error(err);
   process.exit(1);
 });

@@ -17,12 +17,17 @@ import { gradeOne, type Task, type TaskResult } from "./grader.ts";
 import { client, DEFAULT_MODEL, extractHtml, firstText } from "../src/shared/client.ts";
 import { PROMPT_NAIVE } from "../src/shared/prompts.ts";
 
-async function v02_first_call(brief: string): Promise<string> {
+async function v02_first_call(task: Task): Promise<string> {
   const response = await client.messages.create({
     model: DEFAULT_MODEL,
-    max_tokens: 4096,
+    max_tokens: 16384,
     system: PROMPT_NAIVE,
-    messages: [{ role: "user", content: `Create a landing page for: ${brief}` }],
+    messages: [{
+      role: "user",
+      content:
+        `Create a landing page for: ${task.brief}\n` +
+        `Primary goal: ${task.primary_goal} — the page's CTA must drive this action.`,
+    }],
   });
   return extractHtml(firstText(response.content));
 }
@@ -33,13 +38,12 @@ import { existsSync } from "node:fs";
 // to export its orchestrator, we read its HTML output. Cleaner long-term:
 // extract orchestrate() into shared/. For the tutorial we inline a copy here
 // so the eval runner is independent of the script file's argv handling.
-async function v05_decomposition(brief: string): Promise<string> {
-  // Re-implement orchestrate() inline so we can pass `brief` directly.
+async function v05_decomposition(task: Task): Promise<string> {
   const { orchestrate } = await import("./_v05.ts");
-  return orchestrate(brief);
+  return orchestrate(task.brief, task.primary_goal);
 }
 
-const AGENTS: Record<string, (brief: string) => Promise<string>> = {
+const AGENTS: Record<string, (task: Task) => Promise<string>> = {
   v02: v02_first_call,
   v05: v05_decomposition,
 };
@@ -80,7 +84,7 @@ async function main() {
     const t0 = Date.now();
     let html: string;
     try {
-      html = await runAgent(task.brief);
+      html = await runAgent(task);
     } catch (err) {
       console.log(`✗  ERROR (${(err as Error).message})`);
       continue;
