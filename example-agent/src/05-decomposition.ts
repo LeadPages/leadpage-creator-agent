@@ -111,7 +111,21 @@ complete <!doctype html> document with inline CSS and no external assets.
 - Apply the chosen layout pattern from the design.
 - Use the provided font-stack for body text.
 - Use semantic HTML (<h1>, <p>, <a>, <button>).
-- Output ONLY HTML. No prose, no markdown fences.
+
+CTA placement (this is the single most important rule):
+- The primary CTA — the exact 'cta' string from the copy — MUST appear in
+  the hero section, right after the headline + subhead. This is the first
+  thing a visitor sees, and on a one-screen-of-content page it's often the
+  only thing they ever see.
+- You may (and should) repeat the same CTA once more, at the natural end of
+  the page, for visitors who scrolled to the bottom.
+- Never put the CTA exclusively in the footer or after a long prose block.
+  A page whose only job is wishlist / signup / trial / book-call but whose
+  CTA is below the fold is a broken page, regardless of how nice the rest
+  of the design is.
+
+Keep the whole document under ~150 lines. Output ONLY HTML. No prose, no
+markdown fences.
 `.trim(),
     messages: [{
       role: "user",

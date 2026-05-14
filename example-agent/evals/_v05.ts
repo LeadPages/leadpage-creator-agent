@@ -88,7 +88,14 @@ complete <!doctype html> document with inline CSS and no external assets.
 - Use the provided palette for accents and the CTA.
 - Apply the chosen layout pattern.
 - Use the provided font-stack for body text.
-- Output ONLY HTML.
+
+CTA placement (single most important rule):
+- The primary CTA from the copy MUST appear in the hero — right after the
+  headline and subhead, in the first ~600px of the page.
+- Repeat the same CTA once at the end of the page for scrollers.
+- Never put the CTA exclusively in the footer or below a long prose section.
+
+Output ONLY HTML. Keep the whole document under ~150 lines.
 `.trim(),
     messages: [{
       role: "user",
