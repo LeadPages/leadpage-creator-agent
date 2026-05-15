@@ -266,6 +266,33 @@ bun run eval --agent v05              # run v05, compare</code></pre>
         a SQL query: <em>measure or move on.</em>
       </p>
 
+      <div class="callout tip">
+        <strong>How this tutorial got the code you're reading</strong>
+        <p>The eval set above isn't decorative — running it on the
+        Chapter 05 agent surfaced two bugs that shaped the code in this
+        repo.</p>
+        <p><strong>T4 (indie-game) failed</strong> because the assembler
+        subagent buried the "Wishlist on Steam" CTA at the bottom of the
+        page. The judge gave 3.3/5 with the rationale <em>"no visible CTA
+        button"</em> — technically wrong (it existed), practically right
+        (it was below the fold). Fix: a single sentence in the assembler's
+        system prompt requiring the CTA to land in the hero. T4 flipped
+        PASS at 4.3/5.</p>
+        <p><strong>T2 (saas-accountants) failed</strong> because the
+        copywriter produced "Start your free trial" instead of
+        "Book a demo" — the task's <code>primary_goal</code> was
+        <code>"book demo"</code>, but that field was in the dataset and the
+        agent never saw it. The orchestrator passed only the natural-language
+        brief through to the copywriter. Fix: thread <code>primary_goal</code>
+        from the orchestrator into the copywriter and designer (see Chapter 5's
+        signatures — that's why they take an optional <code>primary_goal</code>
+        argument).</p>
+        <p>Neither fix would have happened from staring at the code. The
+        eval did the discovering. The point of this chapter is exactly
+        that: <em>eval-driven dev isn't a hypothetical workflow — it's
+        how the code you're reading got written</em>.</p>
+      </div>
+
       <div class="quiz">
         <span class="q-label">Checkpoint</span>
         <div class="q-text">Your eval score jumps from 67% to 92% after a prompt change you made. A teammate asks "but is the agent actually better?" What's the right thing to do <em>before</em> you celebrate?</div>
